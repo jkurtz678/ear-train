@@ -13,6 +13,7 @@ const {
   startAudioContext,
   playCadenceAndNote,
   playNoteOnly,
+  playScaleNote,
   getRandomNoteIndex,
   getRandomKey,
   getRandomOctave,
@@ -27,6 +28,7 @@ const showSetup = ref(false)
 const keyMode = ref('fixed') // 'fixed' | 'random'
 const cadenceType = ref('major') // 'major' | 'minor'
 const octaves = ref(['middle']) // ['low', 'middle', 'high']
+const walkToRoot = ref(false)
 const currentKey = ref(null)
 
 // Game state
@@ -35,6 +37,7 @@ const currentNoteIndex = ref(null)
 const currentOctave = ref(null)
 const feedbackIndex = ref(null)
 const feedbackType = ref(null)
+const walkHighlightIndex = ref(null)
 const correctCount = ref(0)
 const incorrectCount = ref(0)
 const hasGuessedThisRound = ref(false)
@@ -42,6 +45,24 @@ const hasGuessedThisRound = ref(false)
 const solfege = computed(() => getSolfege(cadenceType.value))
 const keyDisplay = computed(() => formatKeyDisplay(currentKey.value, cadenceType.value))
 const buttonsDisabled = computed(() => !hasStarted.value || isPlaying.value || feedbackType.value === 'correct')
+
+const settingsSummary = computed(() => {
+  const keyModeText = keyMode.value === 'fixed' ? 'Fixed' : 'Random'
+  const modeText = cadenceType.value === 'major' ? 'major' : 'minor'
+
+  let octaveText
+  if (octaves.value.length === 3) {
+    octaveText = 'All octaves'
+  } else if (octaves.value.length === 1) {
+    const octaveName = octaves.value[0].charAt(0).toUpperCase() + octaves.value[0].slice(1)
+    octaveText = `${octaveName} octave`
+  } else {
+    const octaveNames = octaves.value.map(o => o.charAt(0).toUpperCase() + o.slice(1))
+    octaveText = octaveNames.join(' & ') + ' octaves'
+  }
+
+  return `${keyModeText} ${modeText} | ${octaveText}`
+})
 
 // Load settings from localStorage on mount
 onMounted(() => {
@@ -60,6 +81,7 @@ onMounted(() => {
           octaves.value = selectedOctaves
         }
       }
+      if (settings.walkToRoot !== undefined) walkToRoot.value = settings.walkToRoot
     } catch (e) {
       console.warn('Failed to load settings from localStorage')
     }
@@ -77,25 +99,18 @@ async function handleInitialStart() {
   startNewRound()
 }
 
-async function handleSetupStart(settings) {
+function handleSetupStart(settings) {
   keyMode.value = settings.keyMode
   cadenceType.value = settings.cadenceType
   octaves.value = settings.octaves
-
-  // Set initial key
-  if (keyMode.value === 'fixed') {
-    currentKey.value = getRandomKey()
-  }
-
+  walkToRoot.value = settings.walkToRoot
   showSetup.value = false
-  await startAudioContext()
-  hasStarted.value = true
-  startNewRound()
 }
 
 function startNewRound() {
   feedbackIndex.value = null
   feedbackType.value = null
+  walkHighlightIndex.value = null
   hasGuessedThisRound.value = false
 
   // Get new key if random mode
@@ -120,6 +135,50 @@ function handlePlayNote() {
   }
 }
 
+function getWalkSequence(fromIndex) {
+  // Determine the target (low Do = 0, high Do = 7)
+  // Notes 0-3 (Do, Re, Mi, Fa) walk DOWN to 0
+  // Notes 4-7 (Sol, La, Ti, Do) walk UP to 7
+  const sequence = []
+
+  if (fromIndex <= 3) {
+    // Walk down to low Do
+    for (let i = fromIndex; i >= 0; i--) {
+      sequence.push(i)
+    }
+  } else {
+    // Walk up to high Do
+    for (let i = fromIndex; i <= 7; i++) {
+      sequence.push(i)
+    }
+  }
+
+  return sequence
+}
+
+async function playWalkSequence(sequence) {
+  const noteDelay = 350 // ms between notes
+
+  for (let i = 0; i < sequence.length; i++) {
+    const noteIndex = sequence[i]
+    walkHighlightIndex.value = noteIndex
+
+    // First note (mystery note) gets double duration for emphasis
+    const duration = i === 0 ? 0.6 : 0.3
+    const delay = i === 0 ? noteDelay * 2 : noteDelay
+
+    playScaleNote(noteIndex, currentKey.value, cadenceType.value, currentOctave.value, duration)
+
+    if (i < sequence.length - 1) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  // Keep last note highlighted briefly, then clear
+  await new Promise(resolve => setTimeout(resolve, 1200))
+  walkHighlightIndex.value = null
+}
+
 function handleGuess(index) {
   if (buttonsDisabled.value) return
 
@@ -135,9 +194,21 @@ function handleGuess(index) {
     if (!hasGuessedThisRound.value) {
       correctCount.value++
     }
-    setTimeout(() => {
-      startNewRound()
-    }, 800)
+
+    if (walkToRoot.value) {
+      // Play walk to root, then start new round
+      const sequence = getWalkSequence(currentNoteIndex.value)
+      setTimeout(async () => {
+        feedbackIndex.value = null
+        feedbackType.value = null
+        await playWalkSequence(sequence)
+        startNewRound()
+      }, 400)
+    } else {
+      setTimeout(() => {
+        startNewRound()
+      }, 800)
+    }
   } else {
     feedbackType.value = 'wrong'
     if (!hasGuessedThisRound.value) {
@@ -152,6 +223,9 @@ function handleGuess(index) {
 }
 
 function getButtonClass(index) {
+  if (walkHighlightIndex.value === index) {
+    return 'walk-highlight'
+  }
   if (feedbackIndex.value === index) {
     return feedbackType.value === 'correct' ? 'correct' : 'wrong'
   }
@@ -164,10 +238,11 @@ function getButtonClass(index) {
 
   <div class="ear-trainer">
     <button class="back-btn" @click="router.push('/')">&larr; Back</button>
-    <div class="title-row">
-      <h1 class="title">Functional Scale Degrees</h1>
+    <h1 class="title">Functional Scale Degrees</h1>
+    <div class="settings-row">
+      <span class="settings-summary">{{ settingsSummary }}</span>
       <button class="settings-btn" @click="showSetup = true">
-        <Settings :size="24" />
+        <Settings :size="18" />
       </button>
     </div>
 
@@ -177,31 +252,13 @@ function getButtonClass(index) {
       <span class="incorrect-score">{{ incorrectCount }}</span>
     </div>
 
-    <div class="controls">
-      <template v-if="!hasStarted">
-        <button
-          class="control-btn start-btn"
-          @click="handleInitialStart"
-        >
-          Start
-        </button>
-      </template>
-      <template v-else>
-        <button
-          class="control-btn replay-btn"
-          :disabled="isPlaying"
-          @click="handleReplay"
-        >
-          Replay
-        </button>
-        <button
-          class="control-btn note-btn"
-          :disabled="isPlaying"
-          @click="handlePlayNote"
-        >
-          Note
-        </button>
-      </template>
+    <div v-if="!hasStarted" class="controls">
+      <button
+        class="control-btn start-btn"
+        @click="handleInitialStart"
+      >
+        Start
+      </button>
     </div>
 
     <div v-if="!isLoaded && hasStarted" class="loading">
@@ -218,6 +275,23 @@ function getButtonClass(index) {
         @click="handleGuess(index)"
       >
         {{ note }}
+      </button>
+    </div>
+
+    <div v-if="hasStarted" class="controls">
+      <button
+        class="control-btn replay-btn"
+        :disabled="isPlaying"
+        @click="handleReplay"
+      >
+        Replay
+      </button>
+      <button
+        class="control-btn note-btn"
+        :disabled="isPlaying"
+        @click="handlePlayNote"
+      >
+        Note
       </button>
     </div>
   </div>
@@ -251,16 +325,22 @@ function getButtonClass(index) {
   color: #333;
 }
 
-.title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
 .title {
   font-size: 2.5rem;
   color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.settings-summary {
+  color: #666;
+  font-size: 1rem;
 }
 
 .settings-btn {
@@ -302,7 +382,7 @@ function getButtonClass(index) {
 }
 
 .controls {
-  margin-bottom: 2rem;
+  margin-top: 2rem;
 }
 
 .control-btn {
@@ -392,6 +472,13 @@ function getButtonClass(index) {
 .solfege-btn.wrong:hover {
   background: #f44336;
   border-color: #f44336;
+  color: white;
+}
+
+.solfege-btn.walk-highlight,
+.solfege-btn.walk-highlight:hover {
+  background: #2196F3;
+  border-color: #2196F3;
   color: white;
 }
 </style>

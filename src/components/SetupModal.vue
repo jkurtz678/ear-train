@@ -27,6 +27,7 @@ const octaves = ref({
   middle: true,
   high: false,
 })
+const walkToRoot = ref(false)
 
 // Load settings from localStorage on mount
 onMounted(() => {
@@ -37,6 +38,7 @@ onMounted(() => {
       if (settings.keyMode) keyMode.value = settings.keyMode
       if (settings.cadenceType) cadenceType.value = settings.cadenceType
       if (settings.octaves) octaves.value = settings.octaves
+      if (settings.walkToRoot !== undefined) walkToRoot.value = settings.walkToRoot
     } catch (e) {
       console.warn('Failed to load settings from localStorage')
     }
@@ -48,6 +50,7 @@ function saveSettings() {
     keyMode: keyMode.value,
     cadenceType: cadenceType.value,
     octaves: octaves.value,
+    walkToRoot: walkToRoot.value,
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 }
@@ -70,6 +73,7 @@ function handleStart() {
     keyMode: keyMode.value,
     cadenceType: cadenceType.value,
     octaves: selectedOctaves,
+    walkToRoot: walkToRoot.value,
   })
 }
 </script>
@@ -125,6 +129,14 @@ function handleStart() {
               <Checkbox id="high" v-model="octaves.high" />
               <Label for="high" class="font-normal cursor-pointer">High</Label>
             </div>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <Label class="text-base font-medium">After Correct Guess</Label>
+          <div class="flex items-center gap-2">
+            <Checkbox id="walkToRoot" v-model="walkToRoot" />
+            <Label for="walkToRoot" class="font-normal cursor-pointer">Play walk to root</Label>
           </div>
         </div>
       </div>

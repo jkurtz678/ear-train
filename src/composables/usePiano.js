@@ -26,11 +26,19 @@ export function usePiano() {
   const currentMode = ref(null)
 
   let sampler = null
+  let limiter = null
+  let compressor = null
+  let gain = null
 
   async function initPiano() {
     if (sampler) return
 
     return new Promise((resolve) => {
+      // Audio chain: sampler -> gain -> compressor -> limiter -> destination
+      gain = new Tone.Gain(0.6).toDestination()
+      compressor = new Tone.Compressor(-20, 4).connect(gain)
+      limiter = new Tone.Limiter(-6).connect(compressor)
+
       sampler = new Tone.Sampler({
         urls: {
           A0: 'A0.mp3',
@@ -61,7 +69,7 @@ export function usePiano() {
           isLoaded.value = true
           resolve()
         },
-      }).toDestination()
+      }).connect(limiter)
     })
   }
 
@@ -152,7 +160,7 @@ export function usePiano() {
 
     for (const chord of cadence) {
       chord.forEach(note => {
-        sampler.triggerAttackRelease(note, chordDuration, time, 0.6)
+        sampler.triggerAttackRelease(note, chordDuration, time, 0.25)
       })
       time += chordGap
     }
@@ -162,7 +170,7 @@ export function usePiano() {
     const mysteryNote = scaleNotes[noteIndex]
     const solfege = mode === 'major' ? MAJOR_SOLFEGE[noteIndex] : MINOR_SOLFEGE[noteIndex]
     console.log(`[Debug] Key: ${key} ${mode} | Note: ${mysteryNote} (${solfege})`)
-    sampler.triggerAttackRelease(mysteryNote, 1, time, 0.7)
+    sampler.triggerAttackRelease(mysteryNote, 1, time, 0.5)
 
     const totalDuration = (cadence.length * chordGap) + 0.3 + 1
     setTimeout(() => {
@@ -175,7 +183,15 @@ export function usePiano() {
 
     const scaleNotes = getScaleNotes(key, mode, octave)
     const note = scaleNotes[noteIndex]
-    sampler.triggerAttackRelease(note, 1, Tone.now(), 0.7)
+    sampler.triggerAttackRelease(note, 1, Tone.now(), 0.5)
+  }
+
+  function playScaleNote(noteIndex, key, mode, octave = 4, duration = 0.4) {
+    if (!isLoaded.value) return
+
+    const scaleNotes = getScaleNotes(key, mode, octave)
+    const note = scaleNotes[noteIndex]
+    sampler.triggerAttackRelease(note, duration, Tone.now(), 0.5)
   }
 
   function getRandomNoteIndex() {
@@ -199,6 +215,7 @@ export function usePiano() {
     startAudioContext,
     playCadenceAndNote,
     playNoteOnly,
+    playScaleNote,
     getRandomNoteIndex,
     getRandomKey,
     getRandomOctave,
