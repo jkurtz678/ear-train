@@ -3,7 +3,16 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Settings, ArrowLeft, RotateCcw, Music2 } from 'lucide-vue-next'
 import { usePiano } from '@/composables/usePiano'
-import SetupModal from '@/components/SetupModal.vue'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 
 const router = useRouter()
 
@@ -18,21 +27,20 @@ const {
   getRandomKey,
   getRandomOctave,
   getSolfege,
-  formatKeyDisplay,
 } = usePiano()
 
 const STORAGE_KEY = 'ear-trainer-settings'
 
-// Setup state
-const showSetup = ref(false)
-const keyMode = ref('fixed') // 'fixed' | 'random'
-const cadenceType = ref('major') // 'major' | 'minor'
-const octaves = ref(['middle']) // ['low', 'middle', 'high']
+// Settings from setup
+const numberOfQuestions = ref(10)
+const keyMode = ref('fixed')
+const cadenceType = ref('major')
+const octaves = ref(['middle'])
 const walkToRoot = ref(false)
 const currentKey = ref(null)
 
 // Game state
-const hasStarted = ref(false)
+const currentQuestionNumber = ref(1)
 const currentNoteIndex = ref(null)
 const currentOctave = ref(null)
 const feedbackIndex = ref(null)
@@ -41,9 +49,9 @@ const walkHighlightIndex = ref(null)
 const correctCount = ref(0)
 const incorrectCount = ref(0)
 const hasGuessedThisRound = ref(false)
+const showSettings = ref(false)
 
 const solfege = computed(() => getSolfege(cadenceType.value))
-const keyDisplay = computed(() => formatKeyDisplay(currentKey.value, cadenceType.value))
 
 const settingsSummary = computed(() => {
   const keyModeText = keyMode.value === 'fixed' ? 'Fixed' : 'Random'
@@ -63,16 +71,16 @@ const settingsSummary = computed(() => {
   return `${keyModeText} ${modeText} · ${octaveText}`
 })
 
-// Load settings from localStorage on mount
-onMounted(() => {
+// Load settings and start
+onMounted(async () => {
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     try {
       const settings = JSON.parse(saved)
+      if (settings.numberOfQuestions) numberOfQuestions.value = settings.numberOfQuestions
       if (settings.keyMode) keyMode.value = settings.keyMode
       if (settings.cadenceType) cadenceType.value = settings.cadenceType
       if (settings.octaves) {
-        // Convert octaves object to array
         const selectedOctaves = Object.entries(settings.octaves)
           .filter(([_, selected]) => selected)
           .map(([octave]) => octave)
@@ -82,29 +90,18 @@ onMounted(() => {
       }
       if (settings.walkToRoot !== undefined) walkToRoot.value = settings.walkToRoot
     } catch (e) {
-      console.warn('Failed to load settings from localStorage')
+      console.warn('Failed to load settings')
     }
   }
-})
 
-async function handleInitialStart() {
   // Set initial key
   if (keyMode.value === 'fixed') {
     currentKey.value = getRandomKey()
   }
 
   await startAudioContext()
-  hasStarted.value = true
   startNewRound()
-}
-
-function handleSetupStart(settings) {
-  keyMode.value = settings.keyMode
-  cadenceType.value = settings.cadenceType
-  octaves.value = settings.octaves
-  walkToRoot.value = settings.walkToRoot
-  showSetup.value = false
-}
+})
 
 function startNewRound() {
   feedbackIndex.value = null
@@ -135,56 +132,39 @@ function handlePlayNote() {
 }
 
 function getWalkSequence(fromIndex) {
-  // Determine the target (low Do = 0, high Do = 7)
-  // Notes 0-3 (Do, Re, Mi, Fa) walk DOWN to 0
-  // Notes 4-7 (Sol, La, Ti, Do) walk UP to 7
   const sequence = []
-
   if (fromIndex <= 3) {
-    // Walk down to low Do
     for (let i = fromIndex; i >= 0; i--) {
       sequence.push(i)
     }
   } else {
-    // Walk up to high Do
     for (let i = fromIndex; i <= 7; i++) {
       sequence.push(i)
     }
   }
-
   return sequence
 }
 
 async function playWalkSequence(sequence) {
-  const noteDelay = 350 // ms between notes
-
+  const noteDelay = 350
   for (let i = 0; i < sequence.length; i++) {
     const noteIndex = sequence[i]
     walkHighlightIndex.value = noteIndex
-
-    // First note (mystery note) gets double duration for emphasis
     const duration = i === 0 ? 0.6 : 0.3
     const delay = i === 0 ? noteDelay * 2 : noteDelay
-
     playScaleNote(noteIndex, currentKey.value, cadenceType.value, currentOctave.value, duration)
-
     if (i < sequence.length - 1) {
       await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
-
-  // Keep last note highlighted briefly, then clear
   await new Promise(resolve => setTimeout(resolve, 1200))
   walkHighlightIndex.value = null
 }
 
 function handleGuess(index) {
-  // Prevent guessing during correct animation/transition
   if (feedbackType.value === 'correct') return
 
   feedbackIndex.value = index
-
-  // Low and high tonic (Do/La) are interchangeable (indices 0 and 7)
   const isTonicMatch = (index === 0 && currentNoteIndex.value === 7) ||
                        (index === 7 && currentNoteIndex.value === 0)
   const isCorrect = index === currentNoteIndex.value || isTonicMatch
@@ -195,18 +175,30 @@ function handleGuess(index) {
       correctCount.value++
     }
 
+    const moveToNext = async () => {
+      if (currentQuestionNumber.value >= numberOfQuestions.value) {
+        // Go to results
+        router.push({
+          name: 'scale-degrees-results',
+          state: {
+            correctCount: correctCount.value,
+            incorrectCount: incorrectCount.value,
+            totalQuestions: numberOfQuestions.value,
+          }
+        })
+      } else {
+        currentQuestionNumber.value++
+        startNewRound()
+      }
+    }
+
     if (walkToRoot.value) {
-      // Play walk to root immediately, then start new round
       const sequence = getWalkSequence(currentNoteIndex.value)
       feedbackIndex.value = null
       feedbackType.value = null
-      playWalkSequence(sequence).then(() => {
-        startNewRound()
-      })
+      playWalkSequence(sequence).then(moveToNext)
     } else {
-      setTimeout(() => {
-        startNewRound()
-      }, 800)
+      setTimeout(moveToNext, 800)
     }
   } else {
     feedbackType.value = 'wrong'
@@ -230,59 +222,122 @@ function getButtonClass(index) {
   }
   return ''
 }
+
+function saveWalkToRootSetting() {
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved) {
+    try {
+      const settings = JSON.parse(saved)
+      settings.walkToRoot = walkToRoot.value
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    } catch (e) {
+      console.warn('Failed to save setting')
+    }
+  }
+}
+
+function handleSettingsDone() {
+  saveWalkToRootSetting()
+  showSettings.value = false
+}
 </script>
 
 <template>
-  <SetupModal :open="showSetup" @start="handleSetupStart" @close="showSetup = false" />
+  <!-- Settings Modal -->
+  <Dialog :open="showSettings" @update:open="(val) => !val && handleSettingsDone()">
+    <DialogContent class="sm:max-w-md bg-card" @pointerDownOutside.prevent>
+      <DialogHeader class="mb-6">
+        <DialogTitle class="text-xl font-medium tracking-heading">Settings</DialogTitle>
+      </DialogHeader>
+
+      <div class="flex flex-col gap-3 mb-6">
+        <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">After Correct Guess</Label>
+        <div class="flex items-center gap-2">
+          <Checkbox id="walkToRoot" v-model="walkToRoot" />
+          <Label for="walkToRoot" class="font-light cursor-pointer">Play walk to root</Label>
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button @click="handleSettingsDone" class="w-full">Done</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
 
   <div class="page">
     <div class="card">
       <!-- Header -->
       <div class="header">
-        <button class="back-btn" @click="router.push('/')">
+        <button class="back-btn" @click="router.push({ name: 'scale-degrees-setup' })">
           <ArrowLeft :size="20" />
           <span>Back</span>
         </button>
-        <div class="header-right">
-          <div v-if="hasStarted && isPlaying" class="wave-bars">
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
-            <div class="bar"></div>
-          </div>
-          <button class="settings-btn" @click="showSetup = true">
-            <Settings :size="20" />
-          </button>
-        </div>
-      </div>
-
-      <!-- Title & Settings -->
-      <div class="title-section">
-        <h1 class="title">Functional Scale Degrees</h1>
-        <p class="settings-summary">{{ settingsSummary }}</p>
-      </div>
-
-      <!-- Score -->
-      <div v-if="hasStarted" class="score">
-        <span class="correct-score">{{ correctCount }}</span>
-        <span class="score-divider">/</span>
-        <span class="incorrect-score">{{ incorrectCount }}</span>
-      </div>
-
-      <!-- Loading -->
-      <div v-if="!isLoaded && hasStarted" class="loading">
-        Loading piano...
-      </div>
-
-      <!-- Start Button (before game) -->
-      <div v-if="!hasStarted" class="start-section">
-        <button class="control-btn start-btn" @click="handleInitialStart">
-          Start
+        <p class="title-small">Functional Scale Degrees</p>
+        <button class="settings-btn" @click="showSettings = true">
+          <Settings :size="20" />
         </button>
       </div>
 
+      <!-- Settings Summary + Score combined -->
+      <div class="info-bar">
+        <div class="settings-summary">{{ settingsSummary }}</div>
+        <div class="score-compact">
+          <span class="score-label">Score:</span>
+          <span class="score-correct">{{ correctCount }}</span>
+          <span class="score-sep">/</span>
+          <span class="score-incorrect">{{ incorrectCount }}</span>
+        </div>
+      </div>
+
+      <!-- LAYOUT 3: Compact card with everything on one row -->
+      <div class="status-section">
+        <div class="question-card" :class="{ 'is-playing': isPlaying }">
+          <div class="question-row">
+            <div class="question-info">
+              <span class="question-label">Question</span>
+              <span class="question-number">{{ currentQuestionNumber }} <span class="of-total">of {{ numberOfQuestions }}</span></span>
+            </div>
+
+            <div class="controls-and-status">
+              <div class="audio-status">
+                <template v-if="isPlaying">
+                  <div class="wave-bars-small">
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                  </div>
+                  <span class="status-text">Listening...</span>
+                </template>
+              </div>
+
+              <button
+                class="icon-btn replay-icon-btn"
+                :disabled="isPlaying"
+                @click="handleReplay"
+                title="Replay cadence and note"
+              >
+                <RotateCcw :size="18" />
+              </button>
+              <button
+                class="icon-btn note-icon-btn"
+                :disabled="isPlaying"
+                @click="handlePlayNote"
+                title="Play note only"
+              >
+                <Music2 :size="18" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="!isLoaded" class="loading">
+        Loading piano...
+      </div>
+
       <!-- Solfege Buttons -->
-      <div v-if="hasStarted" class="solfege-buttons">
+      <div class="solfege-buttons">
         <button
           v-for="(note, index) in solfege"
           :key="index"
@@ -291,26 +346,6 @@ function getButtonClass(index) {
           @click="handleGuess(index)"
         >
           {{ note }}
-        </button>
-      </div>
-
-      <!-- Controls -->
-      <div v-if="hasStarted" class="controls">
-        <button
-          class="control-btn replay-btn"
-          :disabled="isPlaying"
-          @click="handleReplay"
-        >
-          <RotateCcw :size="18" />
-          <span>Replay</span>
-        </button>
-        <button
-          class="control-btn note-btn"
-          :disabled="isPlaying"
-          @click="handlePlayNote"
-        >
-          <Music2 :size="18" />
-          <span>Note</span>
         </button>
       </div>
     </div>
@@ -344,10 +379,13 @@ function getButtonClass(index) {
   align-items: center;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.title-small {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
 }
 
 .back-btn {
@@ -388,54 +426,172 @@ function getButtonClass(index) {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.title-section {
-  text-align: center;
-}
-
-.title {
-  font-size: 1.75rem;
-  margin: 0 0 8px 0;
+/* Info bar - Settings Summary + Score on same line */
+.info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
 }
 
 .settings-summary {
   color: #888;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 300;
-  margin: 0;
 }
 
-.score {
-  font-size: 2rem;
-  font-weight: 400;
-  text-align: center;
-  padding: 16px 0;
+.score-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 1.1rem;
 }
 
-.correct-score {
+.score-label {
+  color: #888;
+  font-weight: 300;
+  font-size: 0.9rem;
+}
+
+.score-correct {
   color: #4A9D68;
   font-weight: 500;
 }
 
-.score-divider {
+.score-sep {
   color: #ccc;
-  margin: 0 8px;
 }
 
-.incorrect-score {
+.score-incorrect {
   color: #CC5A5A;
   font-weight: 500;
+}
+
+/* LAYOUT 3: Compact card with fixed-height audio area */
+.status-section {
+  display: flex;
+  justify-content: center;
+}
+
+.question-card {
+  background: white;
+  border: 2px solid #E0E0E0;
+  border-radius: 12px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 400px;
+  transition: all 0.3s ease;
+}
+
+.question-card.is-playing {
+  border-color: #B8956D;
+  box-shadow: 0 0 0 3px rgba(184, 149, 109, 0.1);
+}
+
+.question-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.question-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.question-label {
+  font-size: 0.7rem;
+  color: #888;
+  font-weight: 300;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.question-number {
+  font-size: 2rem;
+  font-weight: 500;
+  color: #444;
+  line-height: 1;
+}
+
+.of-total {
+  font-size: 1.2rem;
+  font-weight: 300;
+  color: #888;
+}
+
+.controls-and-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.audio-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.status-text {
+  font-size: 0.85rem;
+  color: #B8956D;
+  font-weight: 400;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.replay-icon-btn {
+  background: #B8956D;
+  color: white;
+}
+
+.replay-icon-btn:hover:not(:disabled) {
+  background: #A6845E;
+  transform: scale(1.05);
+}
+
+.replay-icon-btn:disabled {
+  background: #E0E0E0;
+  color: #888;
+  cursor: not-allowed;
+}
+
+.note-icon-btn {
+  background: white;
+  color: #444;
+  border: 1px solid #E0E0E0;
+}
+
+.note-icon-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: #B8956D;
+  color: #B8956D;
+  transform: scale(1.05);
+}
+
+.note-icon-btn:disabled {
+  background: #E0E0E0;
+  color: #888;
+  cursor: not-allowed;
+  border-color: #E0E0E0;
 }
 
 .loading {
   color: #888;
   text-align: center;
   font-weight: 300;
-}
-
-.start-section {
-  display: flex;
-  justify-content: center;
-  padding: 32px 0;
 }
 
 .solfege-buttons {
@@ -487,78 +643,20 @@ function getButtonClass(index) {
   color: #4A9D68;
 }
 
-.controls {
+/* Audio Indicator - Small Wave Bars */
+.wave-bars-small {
   display: flex;
-  gap: 12px;
-  justify-content: center;
-}
-
-.control-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 24px;
-  font-size: 1rem;
-  font-weight: 400;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  letter-spacing: 0.02em;
-}
-
-.start-btn {
-  background: #B8956D;
-  color: white;
-  padding: 14px 32px;
-  font-size: 1.1rem;
-}
-
-.start-btn:hover {
-  background: #A6845E;
-}
-
-.replay-btn {
-  background: #B8956D;
-  color: white;
-}
-
-.replay-btn:hover:not(:disabled) {
-  background: #A6845E;
-}
-
-.replay-btn:disabled,
-.note-btn:disabled {
-  background: #E0E0E0;
-  color: #888;
-  cursor: not-allowed;
-}
-
-.note-btn {
-  background: white;
-  color: #444;
-  border: 1px solid #E0E0E0;
-}
-
-.note-btn:hover:not(:disabled) {
-  background: #f5f5f5;
-  border-color: #B8956D;
-}
-
-/* Audio Indicator - Wave Bars */
-.wave-bars {
-  display: flex;
-  gap: 3px;
+  gap: 2px;
   align-items: flex-end;
-  height: 20px;
+  height: 16px;
   animation: fade-in 0.3s ease-in;
 }
 
-.wave-bars .bar {
-  width: 3px;
+.wave-bars-small .bar {
+  width: 2px;
   background: #B8956D;
-  border-radius: 2px;
-  animation: wave-bounce 0.8s ease-in-out infinite;
+  border-radius: 1px;
+  animation: wave-bounce-small 0.8s ease-in-out infinite;
 }
 
 @keyframes fade-in {
@@ -570,28 +668,24 @@ function getButtonClass(index) {
   }
 }
 
-.wave-bars .bar:nth-child(1) {
+.wave-bars-small .bar:nth-child(1) {
   animation-delay: 0s;
 }
 
-.wave-bars .bar:nth-child(2) {
-  animation-delay: 0.1s;
+.wave-bars-small .bar:nth-child(2) {
+  animation-delay: 0.15s;
 }
 
-.wave-bars .bar:nth-child(3) {
-  animation-delay: 0.2s;
-}
-
-.wave-bars .bar:nth-child(4) {
+.wave-bars-small .bar:nth-child(3) {
   animation-delay: 0.3s;
 }
 
-@keyframes wave-bounce {
+@keyframes wave-bounce-small {
   0%, 100% {
-    height: 6px;
+    height: 4px;
   }
   50% {
-    height: 20px;
+    height: 16px;
   }
 }
 </style>

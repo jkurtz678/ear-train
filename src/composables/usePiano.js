@@ -168,18 +168,53 @@ export function usePiano() {
     console.log(`[Debug] Key: ${key} ${mode} | Note: ${mysteryNote} (${solfege})`)
     sampler.triggerAttackRelease(mysteryNote, 1, time, 0.7)
 
-    const totalDuration = (cadence.length * chordGap) + 0.3 + 1
+    // Account for release time (1s) in addition to note duration
+    const totalDuration = (cadence.length * chordGap) + 0.3 + 1 + 1
     setTimeout(() => {
       isPlaying.value = false
     }, totalDuration * 1000)
   }
 
+  function playCadenceOnly(key, mode) {
+    return new Promise((resolve) => {
+      if (!isLoaded.value) {
+        resolve()
+        return
+      }
+
+      const cadence = mode === 'major' ? getMajorCadence(key) : getMinorCadence(key)
+
+      const chordDuration = 0.5
+      const chordGap = 0.6
+
+      let time = Tone.now()
+
+      for (const chord of cadence) {
+        chord.forEach(note => {
+          sampler.triggerAttackRelease(note, chordDuration, time, 0.4)
+        })
+        time += chordGap
+      }
+
+      const totalDuration = cadence.length * chordGap
+      setTimeout(() => {
+        resolve()
+      }, totalDuration * 1000)
+    })
+  }
+
   function playNoteOnly(noteIndex, key, mode, octave = 4) {
     if (!isLoaded.value || isPlaying.value) return
 
+    isPlaying.value = true
     const scaleNotes = getScaleNotes(key, mode, octave)
     const note = scaleNotes[noteIndex]
     sampler.triggerAttackRelease(note, 1, Tone.now(), 0.7)
+
+    // Account for note duration + release time
+    setTimeout(() => {
+      isPlaying.value = false
+    }, 2000) // 1s duration + 1s release
   }
 
   function playScaleNote(noteIndex, key, mode, octave = 4, duration = 0.4) {
@@ -210,6 +245,7 @@ export function usePiano() {
     currentMode,
     startAudioContext,
     playCadenceAndNote,
+    playCadenceOnly,
     playNoteOnly,
     playScaleNote,
     getRandomNoteIndex,

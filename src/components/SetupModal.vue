@@ -80,63 +80,63 @@ function handleStart() {
 
 <template>
   <Dialog :open="open" @update:open="(val) => !val && emit('close')">
-    <DialogContent class="sm:max-w-md" @pointerDownOutside.prevent>
+    <DialogContent class="sm:max-w-md bg-card" @pointerDownOutside.prevent>
       <DialogHeader class="mb-6">
-        <DialogTitle class="text-xl font-semibold">Setup</DialogTitle>
+        <DialogTitle class="text-xl font-medium tracking-heading">Setup</DialogTitle>
       </DialogHeader>
 
       <div class="flex flex-col gap-6 mb-6">
         <div class="flex flex-col gap-3">
-          <Label class="text-base font-medium">Key Mode</Label>
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Key Mode</Label>
           <RadioGroup v-model="keyMode" class="flex gap-6">
             <div class="flex items-center gap-2">
               <RadioGroupItem id="fixed" value="fixed" />
-              <Label for="fixed" class="font-normal cursor-pointer">Fixed Key</Label>
+              <Label for="fixed" class="font-light cursor-pointer">Fixed Key</Label>
             </div>
             <div class="flex items-center gap-2">
               <RadioGroupItem id="random" value="random" />
-              <Label for="random" class="font-normal cursor-pointer">Random Keys</Label>
+              <Label for="random" class="font-light cursor-pointer">Random Keys</Label>
             </div>
           </RadioGroup>
         </div>
 
         <div class="flex flex-col gap-3">
-          <Label class="text-base font-medium">Cadence Type</Label>
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Cadence Type</Label>
           <RadioGroup v-model="cadenceType" class="flex gap-6">
             <div class="flex items-center gap-2">
               <RadioGroupItem id="major" value="major" />
-              <Label for="major" class="font-normal cursor-pointer">Major</Label>
+              <Label for="major" class="font-light cursor-pointer">Major</Label>
             </div>
             <div class="flex items-center gap-2">
               <RadioGroupItem id="minor" value="minor" />
-              <Label for="minor" class="font-normal cursor-pointer">Minor</Label>
+              <Label for="minor" class="font-light cursor-pointer">Minor</Label>
             </div>
           </RadioGroup>
         </div>
 
         <div class="flex flex-col gap-3">
-          <Label class="text-base font-medium">Octaves</Label>
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Octaves</Label>
           <div class="flex gap-6">
             <div class="flex items-center gap-2">
               <Checkbox id="low" v-model="octaves.low" />
-              <Label for="low" class="font-normal cursor-pointer">Low</Label>
+              <Label for="low" class="font-light cursor-pointer">Low</Label>
             </div>
             <div class="flex items-center gap-2">
               <Checkbox id="middle" v-model="octaves.middle" />
-              <Label for="middle" class="font-normal cursor-pointer">Middle</Label>
+              <Label for="middle" class="font-light cursor-pointer">Middle</Label>
             </div>
             <div class="flex items-center gap-2">
               <Checkbox id="high" v-model="octaves.high" />
-              <Label for="high" class="font-normal cursor-pointer">High</Label>
+              <Label for="high" class="font-light cursor-pointer">High</Label>
             </div>
           </div>
         </div>
 
         <div class="flex flex-col gap-3">
-          <Label class="text-base font-medium">After Correct Guess</Label>
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">After Correct Guess</Label>
           <div class="flex items-center gap-2">
             <Checkbox id="walkToRoot" v-model="walkToRoot" />
-            <Label for="walkToRoot" class="font-normal cursor-pointer">Play walk to root</Label>
+            <Label for="walkToRoot" class="font-light cursor-pointer">Play walk to root</Label>
           </div>
         </div>
       </div>
