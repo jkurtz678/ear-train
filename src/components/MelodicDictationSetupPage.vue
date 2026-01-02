@@ -20,7 +20,9 @@ const STORAGE_KEY = 'melodic-dictation-settings'
 
 // Main settings (visible on page)
 const numberOfNotes = ref(8)
+const notesSlider = ref(6) // 0-16: 0-8 maps to 2-10, 9-16 maps to 15-50
 const isInfinite = ref(false)
+const numberOfQuestions = ref(10)
 const speed = ref(1)
 const speedSlider = ref(100) // 0-200, with 100 = 1x
 
@@ -56,6 +58,41 @@ function speedToSlider(speedValue) {
     return 100 + ((speedValue - 1) / 2) * 100
   }
 }
+
+// Convert slider value (0-16) to number of notes (2-10, 15-50)
+function sliderToNotes(sliderValue) {
+  if (sliderValue <= 8) {
+    // 0-8 maps to 2-10
+    return 2 + sliderValue
+  } else {
+    // 9-16 maps to 15-50 (steps of 5)
+    return 15 + (sliderValue - 9) * 5
+  }
+}
+
+// Convert number of notes to slider value (0-16)
+function notesToSlider(notesValue) {
+  if (notesValue <= 10) {
+    // 2-10 maps to 0-8
+    return notesValue - 2
+  } else {
+    // 15-50 maps to 9-16
+    return 9 + Math.floor((notesValue - 15) / 5)
+  }
+}
+
+// Update number of notes when slider changes
+watch(notesSlider, (newValue) => {
+  numberOfNotes.value = sliderToNotes(newValue)
+})
+
+// Update slider when number of notes is loaded
+watch(numberOfNotes, (newValue) => {
+  const expectedSlider = notesToSlider(newValue)
+  if (Math.abs(notesSlider.value - expectedSlider) > 0.5) {
+    notesSlider.value = Math.round(expectedSlider)
+  }
+}, { immediate: true })
 
 // Update speed when slider changes
 watch(speedSlider, (newValue) => {
@@ -106,8 +143,23 @@ onMounted(() => {
   if (saved) {
     try {
       const settings = JSON.parse(saved)
-      if (settings.numberOfNotes) numberOfNotes.value = settings.numberOfNotes
+      if (settings.numberOfNotes) {
+        // Clamp to valid range: 2-10 or 15-50 (steps of 5 for 15-50)
+        let num = settings.numberOfNotes
+        if (num < 2) num = 2
+        else if (num > 10 && num < 15) num = 10
+        else if (num > 10) {
+          // Round to nearest 5 for values > 10
+          num = Math.min(50, Math.max(15, Math.round(num / 5) * 5))
+        }
+        numberOfNotes.value = num
+      }
       if (settings.isInfinite !== undefined) isInfinite.value = settings.isInfinite
+      if (settings.numberOfQuestions) {
+        // Clamp to valid range (5-50, steps of 5)
+        const num = Math.max(5, Math.min(50, settings.numberOfQuestions))
+        numberOfQuestions.value = Math.round(num / 5) * 5
+      }
       if (settings.speed) speed.value = settings.speed
       if (settings.continueOnIncorrect !== undefined) continueOnIncorrect.value = settings.continueOnIncorrect
       if (settings.keyMode) keyMode.value = settings.keyMode
@@ -147,6 +199,7 @@ function handleStart() {
   const settings = {
     numberOfNotes: numberOfNotes.value,
     isInfinite: isInfinite.value,
+    numberOfQuestions: numberOfQuestions.value,
     speed: speed.value,
     continueOnIncorrect: continueOnIncorrect.value,
     keyMode: keyMode.value,
@@ -155,7 +208,7 @@ function handleStart() {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 
-  // Navigate to melodic dictation (you'll need to update the route)
+  // Navigate to melodic dictation
   router.push({
     name: 'melodic-dictation',
     state: { settings }
@@ -242,42 +295,61 @@ function handleStart() {
 
   <div class="page">
     <div class="card">
-      <!-- Header -->
+      <!-- Header with Title -->
       <div class="header">
         <button class="back-btn" @click="router.push('/')">
           <ArrowLeft :size="20" />
           <span>Back</span>
         </button>
-      </div>
-
-      <!-- Title -->
-      <div class="title-section">
-        <h1 class="title">Melodic Dictation</h1>
-        <p class="subtitle">Setup your practice session</p>
+        <div class="title-section">
+          <h1 class="title">Melodic Dictation</h1>
+          <p class="subtitle">Setup your practice session</p>
+        </div>
       </div>
 
       <!-- Streamlined Settings -->
       <div class="settings-simple">
-        <!-- Number of Notes Card -->
+        <!-- Notes per Sequence Card -->
         <div class="config-card">
           <div class="config-content">
-            <span class="config-label">Number of Notes</span>
-            <div class="notes-container">
+            <div class="notes-header">
+              <span class="config-label">Notes per Sequence</span>
               <div class="checkbox-item">
                 <Checkbox id="infinite" v-model="isInfinite" />
                 <Label for="infinite" class="checkbox-label">Infinite</Label>
               </div>
-              <div v-if="!isInfinite" class="number-input-group">
-                <input
-                  v-model.number="numberOfNotes"
-                  type="number"
-                  min="2"
-                  max="100"
-                  class="number-input-inline"
-                />
-                <span class="notes-label">notes</span>
-              </div>
             </div>
+            <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
+              <input
+                v-model.number="notesSlider"
+                type="range"
+                min="0"
+                max="16"
+                step="1"
+                class="slider"
+                :disabled="isInfinite"
+              />
+            </div>
+            <div class="notes-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfNotes} notes` }}</div>
+          </div>
+        </div>
+
+        <!-- Number of Questions Card -->
+        <div class="config-card">
+          <div class="config-content">
+            <span class="config-label">Number of Questions</span>
+            <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
+              <input
+                v-model.number="numberOfQuestions"
+                type="range"
+                min="5"
+                max="50"
+                step="5"
+                class="slider"
+                :disabled="isInfinite"
+              />
+            </div>
+            <div class="questions-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfQuestions} questions` }}</div>
           </div>
         </div>
 
@@ -349,13 +421,13 @@ function handleStart() {
   max-width: 600px;
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 10px;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: start;
 }
 
 .back-btn {
@@ -378,7 +450,9 @@ function handleStart() {
 }
 
 .title-section {
+  flex: 1;
   text-align: center;
+  margin-right: 70px;
 }
 
 .title {
@@ -391,7 +465,8 @@ function handleStart() {
   color: #888;
   font-size: 0.95rem;
   font-weight: 300;
-  margin: 0;
+  margin: 0 0 8px 0;
+  text-align: center;
 }
 
 .settings-simple {
@@ -421,6 +496,11 @@ function handleStart() {
 .config-card.clickable:hover {
   border-color: #B8956D;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.disabled-content {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .config-content {
@@ -453,10 +533,10 @@ function handleStart() {
   font-weight: 500;
 }
 
-.notes-container {
+.notes-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 16px;
 }
 
 .checkbox-item {
@@ -471,31 +551,12 @@ function handleStart() {
   font-size: 0.95rem;
 }
 
-.number-input-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.number-input-inline {
-  border: none;
-  background: transparent;
-  color: #444;
+.notes-value,
+.questions-value {
   font-size: 0.95rem;
+  color: #444;
   font-weight: 300;
-  padding: 0;
-  width: 50px;
-  outline: none;
-}
-
-.number-input-inline:focus {
-  color: #B8956D;
-}
-
-.notes-label {
-  font-size: 0.85rem;
-  color: #888;
-  font-weight: 300;
+  text-align: center;
 }
 
 .speed-header {

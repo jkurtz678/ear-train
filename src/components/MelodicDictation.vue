@@ -1,8 +1,18 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, RotateCcw, Square, Play, Pause } from 'lucide-vue-next'
+import { ArrowLeft, RotateCcw, Square, Play, Pause, Settings } from 'lucide-vue-next'
 import { usePiano } from '@/composables/usePiano'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
 
 const router = useRouter()
 
@@ -46,6 +56,10 @@ const incorrectCount = ref(0)
 const feedbackButtonIndex = ref(null)
 const feedbackButtonType = ref(null) // 'correct' | 'wrong'
 
+// Settings modal
+const showSettings = ref(false)
+const speedSlider = ref(100) // 0-200, with 100 = 1x
+
 // Refs for scrolling
 const noteDisplayRef = ref(null)
 
@@ -53,6 +67,39 @@ const noteDisplayRef = ref(null)
 let playbackTimer = null
 
 const solfege = computed(() => getSolfege(cadenceType.value))
+
+// Convert slider value (0-200) to speed (0.2-3)
+function sliderToSpeed(sliderValue) {
+  if (sliderValue <= 100) {
+    return 0.2 + (sliderValue / 100) * 0.8
+  } else {
+    return 1 + ((sliderValue - 100) / 100) * 2
+  }
+}
+
+// Convert speed (0.2-3) to slider value (0-200)
+function speedToSlider(speedValue) {
+  if (speedValue <= 1) {
+    return ((speedValue - 0.2) / 0.8) * 100
+  } else {
+    return 100 + ((speedValue - 1) / 2) * 100
+  }
+}
+
+// Update speed when slider changes
+watch(speedSlider, (newValue) => {
+  speed.value = Math.round(sliderToSpeed(newValue) * 10) / 10
+})
+
+// Update slider when speed is loaded
+watch(speed, (newValue) => {
+  const expectedSlider = speedToSlider(newValue)
+  if (Math.abs(speedSlider.value - expectedSlider) > 0.5) {
+    speedSlider.value = Math.round(expectedSlider)
+  }
+}, { immediate: true })
+
+const speedDisplay = computed(() => `${speed.value.toFixed(1)}x`)
 
 const settingsSummary = computed(() => {
   const keyModeText = keyMode.value === 'fixed' ? 'Fixed' : 'Random'
@@ -102,7 +149,7 @@ watch(currentGuessIndex, () => {
 })
 
 // Load settings from localStorage on mount
-onMounted(() => {
+onMounted(async () => {
   const saved = localStorage.getItem(STORAGE_KEY)
   if (saved) {
     try {
@@ -125,11 +172,30 @@ onMounted(() => {
       console.warn('Failed to load settings from localStorage')
     }
   }
+
+  // Auto-start the exercise
+  await handleStart()
 })
 
 onUnmounted(() => {
   stopPlayback()
 })
+
+function handleSettingsSave() {
+  // Save speed and continueOnIncorrect to localStorage
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved) {
+    try {
+      const settings = JSON.parse(saved)
+      settings.speed = speed.value
+      settings.continueOnIncorrect = continueOnIncorrect.value
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+    } catch (e) {
+      console.warn('Failed to save settings')
+    }
+  }
+  showSettings.value = false
+}
 
 function generateSequence(length) {
   const seq = []
@@ -380,6 +446,54 @@ function getNoteStatus(index) {
 </script>
 
 <template>
+  <!-- Settings Modal -->
+  <Dialog :open="showSettings" @update:open="(val) => showSettings = val">
+    <DialogContent class="sm:max-w-md bg-card" @pointerDownOutside.prevent>
+      <DialogHeader class="mb-6">
+        <DialogTitle class="text-xl font-medium tracking-heading">Settings</DialogTitle>
+      </DialogHeader>
+
+      <div class="flex flex-col gap-6 mb-6">
+        <!-- Speed -->
+        <div class="flex flex-col gap-3">
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Speed: {{ speedDisplay }}</Label>
+          <input
+            type="range"
+            v-model.number="speedSlider"
+            min="0"
+            max="200"
+            step="1"
+            class="w-full accent-primary"
+          />
+          <div class="relative text-xs text-muted-foreground font-light h-4">
+            <span class="absolute left-0">0.2x (slower)</span>
+            <span class="absolute left-1/2 -translate-x-1/2">1x</span>
+            <span class="absolute right-0">3x (faster)</span>
+          </div>
+        </div>
+
+        <!-- On Incorrect Guess -->
+        <div class="flex flex-col gap-3">
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">On Incorrect Guess</Label>
+          <RadioGroup v-model="continueOnIncorrect" class="flex gap-6">
+            <div class="flex items-center gap-2">
+              <RadioGroupItem id="retry" :value="false" />
+              <Label for="retry" class="font-light cursor-pointer">Keep guessing</Label>
+            </div>
+            <div class="flex items-center gap-2">
+              <RadioGroupItem id="continue" :value="true" />
+              <Label for="continue" class="font-light cursor-pointer">Move to next</Label>
+            </div>
+          </RadioGroup>
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button @click="handleSettingsSave" class="w-full">Done</Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
+
   <div class="page">
     <div class="card">
       <!-- Header -->
@@ -387,6 +501,9 @@ function getNoteStatus(index) {
         <button class="back-btn" @click="router.push({ name: 'melodic-dictation-setup' })">
           <ArrowLeft :size="20" />
           <span>Back</span>
+        </button>
+        <button class="settings-btn" @click="showSettings = true">
+          <Settings :size="20" />
         </button>
       </div>
 
@@ -397,21 +514,14 @@ function getNoteStatus(index) {
       </div>
 
       <!-- Score -->
-      <div v-if="hasStarted" class="score">
+      <div class="score">
         <span class="correct-score">{{ correctCount }}</span>
         <span class="score-divider">/</span>
         <span class="incorrect-score">{{ incorrectCount }}</span>
       </div>
 
-      <!-- Start Button (before game) -->
-      <div v-if="!hasStarted" class="start-section">
-        <button class="control-btn start-btn" @click="handleStart">
-          Start
-        </button>
-      </div>
-
       <!-- Note display -->
-      <div v-if="hasStarted" class="note-display-container">
+      <div class="note-display-container">
         <div class="note-display" ref="noteDisplayRef">
           <div
             v-for="(noteIndex, index) in visibleNotes"
