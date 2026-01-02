@@ -587,6 +587,9 @@ function getNoteSolfege(index) {
             max="200"
             step="1"
             class="slider"
+            @touchstart.stop
+            @touchmove.stop
+            @touchend.stop
           />
           <div class="relative text-xs text-muted-foreground font-light h-4">
             <span class="absolute left-0">0.2x (slower)</span>
@@ -1219,7 +1222,12 @@ function getNoteSolfege(index) {
   outline: none;
   -webkit-appearance: none;
   appearance: none;
-  touch-action: manipulation;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  padding: 10px 0;
+  margin: -10px 0;
+  background-clip: content-box;
 }
 
 .slider::-webkit-slider-thumb {
