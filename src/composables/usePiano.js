@@ -74,6 +74,15 @@ export function usePiano() {
   }
 
   async function startAudioContext() {
+    // On iOS Safari 16.4+, use the audioSession API to bypass silent mode
+    if ('audioSession' in navigator) {
+      try {
+        navigator.audioSession.type = 'playback'
+      } catch (e) {
+        console.warn('Could not set audio session type:', e)
+      }
+    }
+
     await Tone.start()
     await initPiano()
   }
