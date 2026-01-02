@@ -777,8 +777,10 @@ function handleSettingsDone() {
   }
 }
 
-.solfege-btn:hover {
-  background: #F0EBE5;
+@media (hover: hover) and (pointer: fine) {
+  .solfege-btn:hover {
+    background: #F0EBE5;
+  }
 }
 
 .solfege-btn.correct,

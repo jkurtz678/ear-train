@@ -1146,7 +1146,7 @@ function getNoteSolfege(index) {
   }
 }
 
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .solfege-btn:hover:not(:disabled) {
     background: #F0EBE5;
   }
