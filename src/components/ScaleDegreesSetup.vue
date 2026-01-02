@@ -115,9 +115,9 @@ function handleStart() {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 
-  // Navigate to Layout 3
+  // Navigate to exercise
   router.push({
-    name: 'scale-degrees-exercise-layout3',
+    name: 'scale-degrees-exercise',
     state: { settings }
   })
 }
@@ -205,7 +205,7 @@ function handleStart() {
 
       <!-- Title -->
       <div class="title-section">
-        <h1 class="title">Functional Scale Degrees</h1>
+        <h1 class="title">Scale Degrees</h1>
         <p class="subtitle">Setup your practice session</p>
       </div>
 

@@ -20,8 +20,8 @@ function goToMelodicDictation() {
 
       <div class="options">
         <button class="option" @click="goToScaleDegrees">
-          <h2>Functional Scale Degrees</h2>
-          <p>Identify scale degrees by ear in the context of a key</p>
+          <h2>Scale Degrees</h2>
+          <p>Identify scale degrees by ear</p>
         </button>
 
         <button class="option" @click="goToMelodicDictation">

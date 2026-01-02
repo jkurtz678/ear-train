@@ -5,9 +5,7 @@ import MelodicDictation from '../components/MelodicDictation.vue'
 import MelodicDictationSetupPage from '../components/MelodicDictationSetupPage.vue'
 import ScaleDegreesSetup from '../components/ScaleDegreesSetup.vue'
 import ScaleDegreesResults from '../components/ScaleDegreesResults.vue'
-import ScaleDegreesExercise_Layout1 from '../components/ScaleDegreesExercise_Layout1.vue'
-import ScaleDegreesExercise_Layout2 from '../components/ScaleDegreesExercise_Layout2.vue'
-import ScaleDegreesExercise_Layout3 from '../components/ScaleDegreesExercise_Layout3.vue'
+import ScaleDegreesExercise from '../components/ScaleDegreesExercise.vue'
 
 const routes = [
   {
@@ -28,19 +26,9 @@ const routes = [
     component: ScaleDegreesSetup,
   },
   {
-    path: '/scale-degrees/exercise-layout1',
-    name: 'scale-degrees-exercise-layout1',
-    component: ScaleDegreesExercise_Layout1,
-  },
-  {
-    path: '/scale-degrees/exercise-layout2',
-    name: 'scale-degrees-exercise-layout2',
-    component: ScaleDegreesExercise_Layout2,
-  },
-  {
-    path: '/scale-degrees/exercise-layout3',
-    name: 'scale-degrees-exercise-layout3',
-    component: ScaleDegreesExercise_Layout3,
+    path: '/scale-degrees/exercise',
+    name: 'scale-degrees-exercise',
+    component: ScaleDegreesExercise,
   },
   {
     path: '/scale-degrees/results',
