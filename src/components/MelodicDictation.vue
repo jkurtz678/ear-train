@@ -46,7 +46,7 @@ const currentQuestionNumber = ref(1)
 const hasStarted = ref(false)
 const isPlaying = ref(false)
 const isPaused = ref(false)
-const sequence = ref([]) // Array of note indices
+const sequence = ref([]) // Array of { noteIndex, octave }
 const currentGuessIndex = ref(0) // Which note in sequence we're guessing
 const playedUpTo = ref(0) // How many notes have been played
 const currentlyPlayingIndex = ref(-1) // Which note is currently being played (for highlight)
@@ -68,6 +68,7 @@ const noteDisplayRef = ref(null)
 
 // Playback timer
 let playbackTimer = null
+let replayGeneration = 0 // Counter to invalidate stale replay callbacks
 
 const solfege = computed(() => getSolfege(cadenceType.value))
 
@@ -218,14 +219,20 @@ function generateSequence(length) {
   const seq = []
   const actualLength = isInfinite.value ? 100 : length
   for (let i = 0; i < actualLength; i++) {
-    seq.push(getRandomNoteIndex())
+    seq.push({
+      noteIndex: getRandomNoteIndex(),
+      octave: getRandomOctave(octaves.value)
+    })
   }
   return seq
 }
 
 function extendSequence() {
   for (let i = 0; i < 50; i++) {
-    sequence.value.push(getRandomNoteIndex())
+    sequence.value.push({
+      noteIndex: getRandomNoteIndex(),
+      octave: getRandomOctave(octaves.value)
+    })
   }
 }
 
@@ -274,7 +281,15 @@ async function handleNextQuestion() {
   currentQuestionNumber.value++
 
   if (isAllQuestionsComplete.value) {
-    // All questions done - could show final results or restart
+    // Navigate to results page
+    router.push({
+      name: 'melodic-dictation-results',
+      state: {
+        correctCount: correctCount.value,
+        incorrectCount: incorrectCount.value,
+        totalQuestions: numberOfQuestions.value,
+      },
+    })
     return
   }
 
@@ -309,12 +324,12 @@ function playNextNote() {
 
   const maxNotes = isInfinite.value ? Infinity : numberOfNotes.value
   if (playedUpTo.value < sequence.value.length && playedUpTo.value < maxNotes) {
-    const noteIndex = sequence.value[playedUpTo.value]
+    const { noteIndex, octave } = sequence.value[playedUpTo.value]
 
     // Set yellow highlight for currently playing note - stays until next note plays
     currentlyPlayingIndex.value = playedUpTo.value
 
-    playScaleNote(noteIndex, currentKey.value, cadenceType.value, currentOctave.value, 0.5)
+    playScaleNote(noteIndex, currentKey.value, cadenceType.value, octave, 0.5)
 
     // Mark that first note has been played
     if (playedUpTo.value === 0) {
@@ -356,10 +371,28 @@ function handleStop() {
 }
 
 async function handleReplay() {
+  // If currently playing, stop playback and return
+  if (isPlaying.value && !isPaused.value) {
+    stopPlayback()
+    currentlyPlayingIndex.value = -1
+    return
+  }
+
+  // In infinite mode, reset the entire test with new notes
+  if (isInfinite.value) {
+    stopPlayback()
+    await startNewSequence()
+    return
+  }
+
   stopPlayback()
 
   isPlaying.value = true
   isPaused.value = false
+
+  // Increment generation to invalidate any pending callbacks from previous replay
+  replayGeneration++
+  const currentGeneration = replayGeneration
 
   // Reset playback position
   const previousPlayedUpTo = playedUpTo.value
@@ -378,13 +411,16 @@ async function handleReplay() {
   } else {
     // Replay notes that were already played
     const replayNext = () => {
+      // Check if this callback is from a stale replay
+      if (currentGeneration !== replayGeneration) return
+
       if (playedUpTo.value < previousPlayedUpTo && !isPaused.value && isPlaying.value) {
-        const noteIndex = sequence.value[playedUpTo.value]
+        const { noteIndex, octave } = sequence.value[playedUpTo.value]
 
         // Set yellow highlight for currently playing note - stays until next note plays
         currentlyPlayingIndex.value = playedUpTo.value
 
-        playScaleNote(noteIndex, currentKey.value, cadenceType.value, currentOctave.value, 0.5)
+        playScaleNote(noteIndex, currentKey.value, cadenceType.value, octave, 0.5)
         playedUpTo.value++
 
         if (playedUpTo.value < previousPlayedUpTo) {
@@ -393,8 +429,13 @@ async function handleReplay() {
           // Finished replaying - check if we should continue or end
           const maxNotes = isInfinite.value ? Infinity : numberOfNotes.value
           if (playedUpTo.value < maxNotes) {
-            // More notes to play, continue with normal playback
-            startPlayback()
+            // Wait for interval before continuing with normal playback
+            // to avoid playing two notes simultaneously
+            setTimeout(() => {
+              if (currentGeneration === replayGeneration && isPlaying.value && !isPaused.value) {
+                startPlayback()
+              }
+            }, interval)
           } else {
             // This was the last note overall, keep highlight then stop
             setTimeout(() => {
@@ -425,7 +466,10 @@ function handleGuess(guessIndex) {
   const maxNotes = isInfinite.value ? sequence.value.length : numberOfNotes.value
   if (currentGuessIndex.value >= maxNotes) return
 
-  const correctNoteIndex = sequence.value[currentGuessIndex.value]
+  // Prevent guessing notes that haven't been played yet
+  if (currentGuessIndex.value >= playedUpTo.value) return
+
+  const correctNoteIndex = sequence.value[currentGuessIndex.value].noteIndex
 
   // Check if correct (including Do/La equivalence for indices 0 and 7)
   const isTonicMatch = (guessIndex === 0 && correctNoteIndex === 7) ||
@@ -488,6 +532,16 @@ function getNoteStatus(index) {
   }
   // Not yet guessed
   return 'pending'
+}
+
+function shouldShowSolfege(index) {
+  // Show solfege if we've moved past this note (either guessed or skipped)
+  return index < currentGuessIndex.value
+}
+
+function getNoteSolfege(index) {
+  const noteIndex = sequence.value[index].noteIndex
+  return solfege.value[noteIndex]
 }
 </script>
 
@@ -581,7 +635,6 @@ function getNoteStatus(index) {
           <button
             class="playback-orb"
             :class="{ listening: isPlaying }"
-            :disabled="isPlaying && !isPaused"
             @click="handleReplay"
             title="Replay cadence and sequence"
           >
@@ -609,54 +662,40 @@ function getNoteStatus(index) {
             <div class="quarter-note" :class="getNoteStatus(index)">
               &#9833;
             </div>
+            <div class="solfege-label">
+              {{ shouldShowSolfege(index) ? getNoteSolfege(index) : '?' }}
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Sequence complete - Next Question -->
-      <div v-if="isSequenceComplete && !isAllQuestionsComplete" class="sequence-complete">
-        <p>Sequence complete!</p>
-        <button class="control-btn start-btn" @click="handleNextQuestion">
-          Next Question
-        </button>
-      </div>
-
-      <!-- All questions complete -->
-      <div v-if="isAllQuestionsComplete" class="game-over">
-        <p>All questions complete! Final score: {{ correctCount }} / {{ correctCount + incorrectCount }}</p>
-        <button class="control-btn start-btn" @click="handleStart">
-          Start Over
-        </button>
-      </div>
-
       <!-- Divider and Label -->
-      <div v-if="!isSequenceComplete" class="answer-section">
-
-        <div class="answer-label" :class="{ invisible: !hasPlayedFirstNote }">
-          Select each note you heard
+      <div class="answer-section">
+        <div class="answer-label-row">
+          <div class="answer-label" :class="{ invisible: !hasPlayedFirstNote && !isSequenceComplete }">
+            {{ isSequenceComplete ? 'Sequence complete!' : 'Select each note you heard' }}
+          </div>
+          <button
+            v-if="isSequenceComplete"
+            class="next-question-btn"
+            @click="handleNextQuestion"
+          >
+            Next Question
+          </button>
         </div>
       </div>
 
       <!-- Solfege buttons -->
-      <div v-if="!isSequenceComplete" class="solfege-buttons">
+      <div class="solfege-buttons">
         <button
           v-for="(note, index) in solfege"
           :key="index"
           class="solfege-btn"
           :class="getButtonClass(index)"
-          :disabled="!isLoaded"
+          :disabled="!isLoaded || isSequenceComplete"
           @click="handleGuess(index)"
         >
           {{ note }}
-        </button>
-      </div>
-
-      <!-- Playback controls -->
-      <div v-if="hasStarted && !isSequenceComplete && showPauseButton && isPlaying" class="playback-controls">
-        <button class="control-btn pause-btn" @click="handlePause">
-          <Pause :size="20" v-if="!isPaused" />
-          <Play :size="20" v-else />
-          <span>{{ isPaused ? 'Resume' : 'Pause' }}</span>
         </button>
       </div>
     </div>
@@ -823,15 +862,10 @@ function getNoteStatus(index) {
   color: #888;
 }
 
-.playback-orb:hover:not(:disabled) {
+.playback-orb:hover {
   transform: scale(1.05);
   background: #F0EBE5;
   color: #B8956D;
-}
-
-.playback-orb:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .playback-orb.listening {
@@ -901,9 +935,8 @@ function getNoteStatus(index) {
 
 .note-display-container {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   padding: 24px 0;
-  scrollbar-width: thin;
 }
 
 .note-display {
@@ -965,18 +998,13 @@ function getNoteStatus(index) {
   color: #444;
 }
 
-.sequence-complete,
-.game-over {
+.solfege-label {
+  font-size: 0.75rem;
+  color: #888;
+  margin-top: 4px;
+  font-weight: 400;
   text-align: center;
-  padding: 16px 0;
-}
-
-.sequence-complete p,
-.game-over p {
-  font-size: 1.1rem;
-  color: #444;
-  margin: 0 0 16px 0;
-  font-weight: 300;
+  min-height: 1.125rem;
 }
 
 /* Answer Section */
@@ -984,8 +1012,17 @@ function getNoteStatus(index) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 0px;
-  
+  padding: 15px 0px 10px 0px; 
+  min-height: 70px;
+  transition: opacity 0.5s ease;
+  opacity: 1;
+}
+
+.answer-label-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
 }
 
 .divider {
@@ -1016,6 +1053,23 @@ function getNoteStatus(index) {
 
 .answer-label.invisible {
   visibility: hidden;
+}
+
+.next-question-btn {
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  border: none;
+  border-radius: 6px;
+  background: #B8956D;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.next-question-btn:hover {
+  background: #A6845E;
 }
 
 .solfege-buttons {
