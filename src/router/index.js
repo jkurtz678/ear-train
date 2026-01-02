@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import LandingPage from '../components/LandingPage.vue'
-import EarTrainer from '../components/EarTrainer.vue'
 import MelodicDictation from '../components/MelodicDictation.vue'
 import MelodicDictationSetupPage from '../components/MelodicDictationSetupPage.vue'
 import MelodicDictationResults from '../components/MelodicDictationResults.vue'
