@@ -87,11 +87,12 @@ function handleHome() {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: #E5E4E2;
+  background: #e8e4e0;
 }
 
 .card {
-  background: #FAF9F7;
+  background: #f5f3f0;
+  border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   padding: 48px 32px;
   width: 100%;
@@ -152,7 +153,7 @@ function handleHome() {
   font-size: 0.85rem;
   font-weight: 300;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.1em;
   color: #888;
 }
 
@@ -203,14 +204,13 @@ function handleHome() {
   padding: 14px 32px;
   font-size: 1rem;
   font-weight: 400;
-  border: 1px solid #E0E0E0;
+  border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .secondary-btn:hover {
-  background: #f5f5f5;
-  border-color: #B8956D;
+  background: #F0EBE5;
 }
 </style>

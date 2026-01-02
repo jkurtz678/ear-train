@@ -13,12 +13,6 @@ const routes = [
     name: 'home',
     component: LandingPage,
   },
-  // Old route (kept for backwards compatibility)
-  {
-    path: '/scale-degrees',
-    name: 'scale-degrees',
-    component: EarTrainer,
-  },
   // New routes for refactored functional scale degrees
   {
     path: '/scale-degrees/setup',

@@ -31,6 +31,7 @@ const STORAGE_KEY = 'melodic-dictation-settings'
 
 // Setup state
 const numberOfNotes = ref(8)
+const numberOfQuestions = ref(10)
 const isInfinite = ref(false)
 const speed = ref(1)
 const continueOnIncorrect = ref(false)
@@ -41,6 +42,7 @@ const currentKey = ref(null)
 const currentOctave = ref(null)
 
 // Game state
+const currentQuestionNumber = ref(1)
 const hasStarted = ref(false)
 const isPlaying = ref(false)
 const isPaused = ref(false)
@@ -48,6 +50,7 @@ const sequence = ref([]) // Array of note indices
 const currentGuessIndex = ref(0) // Which note in sequence we're guessing
 const playedUpTo = ref(0) // How many notes have been played
 const currentlyPlayingIndex = ref(-1) // Which note is currently being played (for highlight)
+const hasPlayedFirstNote = ref(false) // Track if first note has been played in this sequence
 const guesses = ref([]) // Array of { guessedCorrectly: boolean } or undefined
 const correctCount = ref(0)
 const incorrectCount = ref(0)
@@ -101,28 +104,41 @@ watch(speed, (newValue) => {
 
 const speedDisplay = computed(() => `${speed.value.toFixed(1)}x`)
 
-const settingsSummary = computed(() => {
-  const keyModeText = keyMode.value === 'fixed' ? 'Fixed' : 'Random'
-  const modeText = cadenceType.value === 'major' ? 'major' : 'minor'
-  const notesText = isInfinite.value ? 'Infinite' : `${numberOfNotes.value} notes`
+const settingsSummaryParts = computed(() => {
+  const parts = []
 
-  let octaveText
+  const keyModeText = keyMode.value === 'fixed' ? 'Fixed' : 'Random'
+  const modeText = cadenceType.value === 'major' ? 'Major' : 'Minor'
+  parts.push(`${keyModeText} ${modeText}`)
+
   if (octaves.value.length === 3) {
-    octaveText = 'All octaves'
+    parts.push('All octaves')
   } else if (octaves.value.length === 1) {
     const octaveName = octaves.value[0].charAt(0).toUpperCase() + octaves.value[0].slice(1)
-    octaveText = `${octaveName} octave`
-  } else {
+    parts.push(`${octaveName} octave`)
+  } else if (octaves.value.length > 0) {
     const octaveNames = octaves.value.map(o => o.charAt(0).toUpperCase() + o.slice(1))
-    octaveText = octaveNames.join(' & ')
+    parts.push(octaveNames.join(' & ') + ' octaves')
   }
 
-  return `${keyModeText} ${modeText} · ${octaveText} · ${notesText} · ${speed.value}x`
+  parts.push(speedDisplay.value)
+
+  return parts
 })
 
-const isGameOver = computed(() => {
+const progressPercentage = computed(() => {
+  if (isInfinite.value || numberOfQuestions.value === 0) return 0
+  return (currentQuestionNumber.value / numberOfQuestions.value) * 100
+})
+
+const isSequenceComplete = computed(() => {
   if (isInfinite.value) return false
   return currentGuessIndex.value >= numberOfNotes.value && sequence.value.length > 0
+})
+
+const isAllQuestionsComplete = computed(() => {
+  if (isInfinite.value) return false
+  return currentQuestionNumber.value > numberOfQuestions.value
 })
 
 const visibleNotes = computed(() => {
@@ -155,6 +171,7 @@ onMounted(async () => {
     try {
       const settings = JSON.parse(saved)
       if (settings.numberOfNotes) numberOfNotes.value = settings.numberOfNotes
+      if (settings.numberOfQuestions) numberOfQuestions.value = settings.numberOfQuestions
       if (settings.isInfinite !== undefined) isInfinite.value = settings.isInfinite
       if (settings.speed) speed.value = settings.speed
       if (settings.continueOnIncorrect !== undefined) continueOnIncorrect.value = settings.continueOnIncorrect
@@ -213,18 +230,30 @@ function extendSequence() {
 }
 
 async function handleStart() {
-  // Reset state
+  // Reset ALL state (first time starting)
+  currentQuestionNumber.value = 1
+  correctCount.value = 0
+  incorrectCount.value = 0
+
+  await startNewSequence()
+}
+
+async function startNewSequence() {
+  // Reset sequence-specific state (keep score and question number)
   const numNotes = isInfinite.value ? 100 : numberOfNotes.value
   sequence.value = generateSequence(numNotes)
   currentGuessIndex.value = 0
   playedUpTo.value = 0
   guesses.value = []
-  correctCount.value = 0
-  incorrectCount.value = 0
   isPaused.value = false
+  hasPlayedFirstNote.value = false
 
-  // Set key and octave
-  currentKey.value = getRandomKey()
+  // Set key and octave (random new key if random mode)
+  if (keyMode.value === 'random') {
+    currentKey.value = getRandomKey()
+  } else if (!currentKey.value) {
+    currentKey.value = getRandomKey()
+  }
   currentOctave.value = getRandomOctave(octaves.value)
 
   await startAudioContext()
@@ -239,6 +268,17 @@ async function handleStart() {
 
   // Start playing notes
   startPlayback()
+}
+
+async function handleNextQuestion() {
+  currentQuestionNumber.value++
+
+  if (isAllQuestionsComplete.value) {
+    // All questions done - could show final results or restart
+    return
+  }
+
+  await startNewSequence()
 }
 
 function startPlayback() {
@@ -257,7 +297,7 @@ function startPlayback() {
 }
 
 function playNextNote() {
-  if (isGameOver.value) {
+  if (isSequenceComplete.value) {
     stopPlayback()
     return
   }
@@ -275,6 +315,12 @@ function playNextNote() {
     currentlyPlayingIndex.value = playedUpTo.value
 
     playScaleNote(noteIndex, currentKey.value, cadenceType.value, currentOctave.value, 0.5)
+
+    // Mark that first note has been played
+    if (playedUpTo.value === 0) {
+      hasPlayedFirstNote.value = true
+    }
+
     playedUpTo.value++
 
     // Check if this was the last note
@@ -374,7 +420,7 @@ function showButtonFeedback(buttonIndex, type) {
 }
 
 function handleGuess(guessIndex) {
-  if (!hasStarted.value || isGameOver.value) return
+  if (!hasStarted.value || isSequenceComplete.value) return
 
   const maxNotes = isInfinite.value ? sequence.value.length : numberOfNotes.value
   if (currentGuessIndex.value >= maxNotes) return
@@ -402,7 +448,7 @@ function handleGuess(guessIndex) {
       currentGuessIndex.value++
     }
 
-    if (isGameOver.value) {
+    if (isSequenceComplete.value) {
       stopPlayback()
     }
   } else {
@@ -417,7 +463,7 @@ function handleGuess(guessIndex) {
     if (continueOnIncorrect.value) {
       currentGuessIndex.value++
 
-      if (isGameOver.value) {
+      if (isSequenceComplete.value) {
         stopPlayback()
       }
     }
@@ -507,17 +553,46 @@ function getNoteStatus(index) {
         </button>
       </div>
 
-      <!-- Title & Settings -->
-      <div class="title-section">
-        <h1 class="title">Melodic Dictation</h1>
-        <p class="settings-summary">{{ settingsSummary }}</p>
-      </div>
+      <!-- Center Content -->
+      <div class="center-content">
+        <!-- Test Badge (Settings Summary) -->
+        <div class="test-badge">
+          <template v-for="(part, index) in settingsSummaryParts" :key="index">
+            <span>{{ part }}</span>
+            <span v-if="index < settingsSummaryParts.length - 1" class="summary-separator"> · </span>
+          </template>
+        </div>
 
-      <!-- Score -->
-      <div class="score">
-        <span class="correct-score">{{ correctCount }}</span>
-        <span class="score-divider">/</span>
-        <span class="incorrect-score">{{ incorrectCount }}</span>
+        <!-- Progress Display -->
+        <div class="progress-display">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" :style="{ width: progressPercentage + '%' }"></div>
+          </div>
+          <div class="progress-meta">
+            <span class="progress-text">{{ isInfinite ? 'Infinite Mode' : `Question ${currentQuestionNumber} of ${numberOfQuestions}` }}</span>
+            <span class="score-text">
+              <span class="score-correct">{{ correctCount }}</span> / <span class="score-incorrect">{{ incorrectCount }}</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- Replay Orb -->
+        <div class="playback-controls-center">
+          <button
+            class="playback-orb"
+            :class="{ listening: isPlaying }"
+            :disabled="isPlaying && !isPaused"
+            @click="handleReplay"
+            title="Replay cadence and sequence"
+          >
+            <div v-if="isPlaying && !isPaused" class="wave-bars">
+              <div class="bar"></div>
+              <div class="bar"></div>
+              <div class="bar"></div>
+            </div>
+            <RotateCcw v-else :size="24" />
+          </button>
+        </div>
       </div>
 
       <!-- Note display -->
@@ -538,21 +613,38 @@ function getNoteStatus(index) {
         </div>
       </div>
 
-      <!-- Game over message -->
-      <div v-if="isGameOver" class="game-over">
-        <p>Sequence complete! Final score: {{ correctCount }} / {{ correctCount + incorrectCount }}</p>
-        <button class="control-btn start-btn" @click="handleStart">
-          Next
+      <!-- Sequence complete - Next Question -->
+      <div v-if="isSequenceComplete && !isAllQuestionsComplete" class="sequence-complete">
+        <p>Sequence complete!</p>
+        <button class="control-btn start-btn" @click="handleNextQuestion">
+          Next Question
         </button>
       </div>
 
+      <!-- All questions complete -->
+      <div v-if="isAllQuestionsComplete" class="game-over">
+        <p>All questions complete! Final score: {{ correctCount }} / {{ correctCount + incorrectCount }}</p>
+        <button class="control-btn start-btn" @click="handleStart">
+          Start Over
+        </button>
+      </div>
+
+      <!-- Divider and Label -->
+      <div v-if="!isSequenceComplete" class="answer-section">
+
+        <div class="answer-label" :class="{ invisible: !hasPlayedFirstNote }">
+          Select each note you heard
+        </div>
+      </div>
+
       <!-- Solfege buttons -->
-      <div v-if="hasStarted && !isGameOver" class="solfege-buttons">
+      <div v-if="!isSequenceComplete" class="solfege-buttons">
         <button
           v-for="(note, index) in solfege"
           :key="index"
           class="solfege-btn"
           :class="getButtonClass(index)"
+          :disabled="!isLoaded"
           @click="handleGuess(index)"
         >
           {{ note }}
@@ -560,19 +652,11 @@ function getNoteStatus(index) {
       </div>
 
       <!-- Playback controls -->
-      <div v-if="hasStarted && !isGameOver" class="playback-controls">
-        <button class="control-btn replay-btn" @click="handleReplay" :disabled="isPlaying && !isPaused">
-          <RotateCcw :size="20" />
-          <span>Replay</span>
-        </button>
-        <button v-if="showPauseButton && isPlaying" class="control-btn pause-btn" @click="handlePause">
+      <div v-if="hasStarted && !isSequenceComplete && showPauseButton && isPlaying" class="playback-controls">
+        <button class="control-btn pause-btn" @click="handlePause">
           <Pause :size="20" v-if="!isPaused" />
           <Play :size="20" v-else />
           <span>{{ isPaused ? 'Resume' : 'Pause' }}</span>
-        </button>
-        <button class="control-btn stop-btn" @click="handleStop">
-          <Square :size="20" />
-          <span>Stop</span>
         </button>
       </div>
     </div>
@@ -598,7 +682,7 @@ function getNoteStatus(index) {
   max-width: 700px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 0px;
 }
 
 .header {
@@ -632,7 +716,7 @@ function getNoteStatus(index) {
   padding: 8px;
   cursor: pointer;
   color: #888;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: all 0.2s;
   display: flex;
   align-items: center;
@@ -645,42 +729,168 @@ function getNoteStatus(index) {
   background: rgba(0, 0, 0, 0.04);
 }
 
-.title-section {
-  text-align: center;
+/* Center Content */
+.center-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.title {
-  font-size: 1.75rem;
-  margin: 0 0 8px 0;
-}
-
-.settings-summary {
+.test-badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: #888;
-  font-size: 0.9rem;
-  font-weight: 300;
-  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.score {
-  font-size: 2rem;
-  font-weight: 400;
-  text-align: center;
-  padding: 8px 0;
-}
-
-.correct-score {
-  color: #4A9D68;
+.summary-separator {
+  color: #B8956D;
+  font-size: 1.2rem;
   font-weight: 500;
 }
 
-.score-divider {
-  color: #ccc;
-  margin: 0 8px;
+/* Progress Display */
+.progress-display {
+  margin-bottom: 32px;
+  width: 240px;
 }
 
-.incorrect-score {
+.progress-bar-track {
+  width: 100%;
+  height: 4px;
+  background: #e0dcd8;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #B8956D;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.score-text {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.score-correct {
+  color: #4a9d5b;
+}
+
+.score-incorrect {
   color: #CC5A5A;
-  font-weight: 500;
+}
+
+/* Playback Controls Center */
+.playback-controls-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  margin-top: 16px;
+}
+
+.playback-orb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: none;
+  color: #888;
+}
+
+.playback-orb:hover:not(:disabled) {
+  transform: scale(1.05);
+  background: #F0EBE5;
+  color: #B8956D;
+}
+
+.playback-orb:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.playback-orb.listening {
+  animation: orbPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes orbPulse {
+  0%, 100% {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  50% {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
+/* Wave bars animation inside orb */
+.wave-bars {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  height: 20px;
+  animation: fade-in 0.3s ease-in;
+}
+
+.wave-bars .bar {
+  width: 2px;
+  background: #B8956D;
+  border-radius: 1px;
+  animation: wave-bounce 0.8s ease-in-out infinite;
+}
+
+.wave-bars .bar:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.wave-bars .bar:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.wave-bars .bar:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes wave-bounce {
+  0%, 100% {
+    height: 6px;
+  }
+  50% {
+    height: 20px;
+  }
 }
 
 .start-section {
@@ -755,16 +965,57 @@ function getNoteStatus(index) {
   color: #444;
 }
 
+.sequence-complete,
 .game-over {
   text-align: center;
   padding: 16px 0;
 }
 
+.sequence-complete p,
 .game-over p {
   font-size: 1.1rem;
   color: #444;
   margin: 0 0 16px 0;
   font-weight: 300;
+}
+
+/* Answer Section */
+.answer-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0px;
+  
+}
+
+.divider {
+  width: 100%;
+  max-width: 400px;
+  height: 1px;
+  background: #e0dcd8;
+  margin-bottom: 24px;
+}
+
+.loading {
+  color: #aaa;
+  text-align: center;
+  font-weight: 300;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  min-height: 1em;
+}
+
+.answer-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #888;
+  min-height: 1em;
+}
+
+.answer-label.invisible {
+  visibility: hidden;
 }
 
 .solfege-buttons {
@@ -787,8 +1038,13 @@ function getNoteStatus(index) {
   min-width: 60px;
 }
 
-.solfege-btn:hover {
+.solfege-btn:hover:not(:disabled) {
   background: #F0EBE5;
+}
+
+.solfege-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .solfege-btn.correct,
@@ -841,22 +1097,6 @@ function getNoteStatus(index) {
   background: #A6845E;
 }
 
-.replay-btn {
-  background: white;
-  color: #444;
-  border: none;
-}
-
-.replay-btn:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.replay-btn:disabled {
-  background: #e0dcd8;
-  color: #888;
-  cursor: not-allowed;
-}
-
 .pause-btn {
   background: #FF9800;
   color: white;
@@ -864,16 +1104,5 @@ function getNoteStatus(index) {
 
 .pause-btn:hover {
   background: #F57C00;
-}
-
-.stop-btn {
-  background: white;
-  color: #CC5A5A;
-  border: 1px solid #CC5A5A;
-}
-
-.stop-btn:hover {
-  background: rgba(204, 90, 90, 0.1);
-  border-color: #B84E4E;
 }
 </style>

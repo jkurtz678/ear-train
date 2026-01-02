@@ -210,8 +210,7 @@ function handleStart() {
 
   // Navigate to melodic dictation
   router.push({
-    name: 'melodic-dictation',
-    state: { settings }
+    name: 'melodic-dictation'
   })
 }
 </script>
@@ -309,47 +308,50 @@ function handleStart() {
 
       <!-- Streamlined Settings -->
       <div class="settings-simple">
-        <!-- Notes per Sequence Card -->
-        <div class="config-card">
-          <div class="config-content">
-            <div class="notes-header">
-              <span class="config-label">Notes per Sequence</span>
-              <div class="checkbox-item">
-                <Checkbox id="infinite" v-model="isInfinite" />
-                <Label for="infinite" class="checkbox-label">Infinite</Label>
+        <!-- Notes and Questions Row -->
+        <div class="config-row">
+          <!-- Notes per Sequence Card -->
+          <div class="config-card">
+            <div class="config-content">
+              <div class="notes-header">
+                <span class="config-label">Notes per Sequence</span>
+                <div class="checkbox-item">
+                  <Checkbox id="infinite" v-model="isInfinite" />
+                  <Label for="infinite" class="checkbox-label">Infinite</Label>
+                </div>
               </div>
+              <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
+                <input
+                  v-model.number="notesSlider"
+                  type="range"
+                  min="0"
+                  max="16"
+                  step="1"
+                  class="slider"
+                  :disabled="isInfinite"
+                />
+              </div>
+              <div class="notes-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfNotes} notes` }}</div>
             </div>
-            <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
-              <input
-                v-model.number="notesSlider"
-                type="range"
-                min="0"
-                max="16"
-                step="1"
-                class="slider"
-                :disabled="isInfinite"
-              />
-            </div>
-            <div class="notes-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfNotes} notes` }}</div>
           </div>
-        </div>
 
-        <!-- Number of Questions Card -->
-        <div class="config-card">
-          <div class="config-content">
-            <span class="config-label">Number of Questions</span>
-            <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
-              <input
-                v-model.number="numberOfQuestions"
-                type="range"
-                min="5"
-                max="50"
-                step="5"
-                class="slider"
-                :disabled="isInfinite"
-              />
+          <!-- Number of Questions Card -->
+          <div class="config-card">
+            <div class="config-content">
+              <span class="config-label">Number of Questions</span>
+              <div class="slider-container" :class="{ 'disabled-content': isInfinite }">
+                <input
+                  v-model.number="numberOfQuestions"
+                  type="range"
+                  min="5"
+                  max="50"
+                  step="5"
+                  class="slider"
+                  :disabled="isInfinite"
+                />
+              </div>
+              <div class="questions-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfQuestions} questions` }}</div>
             </div>
-            <div class="questions-value" :class="{ 'disabled-content': isInfinite }">{{ isInfinite ? 'N/A' : `${numberOfQuestions} questions` }}</div>
           </div>
         </div>
 
@@ -419,7 +421,7 @@ function handleStart() {
   border-radius: 16px;
   padding: 32px;
   width: 100%;
-  max-width: 600px;
+  max-width: 750px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -474,8 +476,18 @@ function handleStart() {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  min-width: 500px;
+  width: 100%;
   margin: 0 auto;
+}
+
+.config-row {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+}
+
+.config-row .config-card {
+  flex: 1;
 }
 
 .config-card {

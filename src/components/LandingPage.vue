@@ -15,18 +15,30 @@ function goToMelodicDictation() {
 <template>
   <div class="page">
     <div class="card">
-      <h1 class="title">Ear Training</h1>
+      <h1 class="title">Eario (?)</h1>
       <p class="subtitle">Choose a training mode to get started</p>
 
       <div class="options">
         <button class="option" @click="goToScaleDegrees">
-          <h2>Scale Degrees</h2>
-          <p>Identify scale degrees by ear</p>
+          <div class="option-content">
+            <h2>Scale Degrees</h2>
+            <p>Identify scale degrees by ear</p>
+          </div>
+          <div class="icon-container">
+            <span class="note-icon">♩</span>
+          </div>
         </button>
 
         <button class="option" @click="goToMelodicDictation">
-          <h2>Melodic Dictation</h2>
-          <p>Transcribe melodies by ear</p>
+          <div class="option-content">
+            <h2>Melodic Dictation</h2>
+            <p>Transcribe melodies by ear</p>
+          </div>
+          <div class="icon-container">
+            <span class="note-icon">♩</span>
+            <span class="note-icon">♩</span>
+            <span class="note-icon">♩</span>
+          </div>
         </button>
       </div>
     </div>
@@ -80,11 +92,31 @@ function goToMelodicDictation() {
   cursor: pointer;
   transition: all 0.2s;
   text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .option:hover {
   background: #F0EBE5;
   transform: translateY(-2px);
+}
+
+.option-content {
+  flex: 1;
+}
+
+.icon-container {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.note-icon {
+  font-size: 1.5rem;
+  color: #B8956D;
+  line-height: 1;
 }
 
 .option h2 {

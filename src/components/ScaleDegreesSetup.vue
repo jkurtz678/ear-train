@@ -117,8 +117,7 @@ function handleStart() {
 
   // Navigate to exercise
   router.push({
-    name: 'scale-degrees-exercise',
-    state: { settings }
+    name: 'scale-degrees-exercise'
   })
 }
 </script>

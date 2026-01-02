@@ -357,14 +357,7 @@ function handleSettingsDone() {
           </div>
         </div>
 
-        <div class="divider"></div>
-
-        <!-- Loading -->
-        <div v-if="!isLoaded" class="loading">
-          Loading piano...
-        </div>
-
-        <div v-else class="answer-label" :class="{ 'label-hidden': !showAnswerLabel }">
+        <div class="answer-label" :class="{ 'label-hidden': !showAnswerLabel }">
           Select the note you heard
         </div>
       </div>
@@ -404,7 +397,6 @@ function handleSettingsDone() {
   max-width: 600px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
 }
 
 .header {
@@ -527,7 +519,7 @@ function handleSettingsDone() {
   align-items: center;
   gap: 16px;
   width: 100%;
-  margin-bottom: 60px;
+  margin-bottom: 32px;
 }
 
 .playback-orb {
@@ -694,6 +686,7 @@ function handleSettingsDone() {
   transition: opacity 0.5s ease;
   opacity: 1;
   min-height: 1em;
+  margin-bottom: 24px;
 }
 
 .answer-label.label-hidden {
