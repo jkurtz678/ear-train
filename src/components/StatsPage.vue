@@ -100,7 +100,7 @@ function getBarColor(note) {
         </button>
         <!-- Title (desktop) -->
         <div class="title-section title-desktop">
-          <h1 class="title">Statistics</h1>
+          <h1 class="title">Your Stats</h1>
         </div>
         <div class="header-spacer"></div>
       </div>

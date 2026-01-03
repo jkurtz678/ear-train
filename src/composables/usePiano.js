@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import * as Tone from 'tone'
 import { Note, Scale } from 'tonal'
+import { createPiano, getPianoTypeList, getSelectedPianoId, setSelectedPianoId } from './piano/pianoTypes'
 
 // All possible root notes
 const ALL_KEYS = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B']
@@ -16,69 +17,57 @@ const OCTAVE_MAP = {
 const MAJOR_SOLFEGE = ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Ti', 'Do']
 const MINOR_SOLFEGE = ['La', 'Ti', 'Do', 'Re', 'Mi', 'Fa', 'Sol', 'La'] // La-based minor
 
-// MusyngKite Acoustic Grand Piano samples
-const SAMPLE_BASE_URL = 'https://gleitz.github.io/midi-js-soundfonts/MusyngKite/acoustic_grand_piano-mp3/'
-
 export function usePiano() {
   const isLoaded = ref(false)
   const isPlaying = ref(false)
   const currentKey = ref(null)
   const currentMode = ref(null)
+  const currentPianoId = ref(getSelectedPianoId())
 
-  let sampler = null
+  let piano = null
+  let audioContext = null
   let limiter = null
-  let gain = null
   let playbackTimeoutId = null
   let visibilityListenerAdded = false
 
   async function initPiano() {
-    if (sampler) return
+    if (piano) return
 
-    return new Promise((resolve) => {
-      // Light limiter just to prevent clipping
-      limiter = new Tone.Limiter(-1).toDestination()
+    // Create AudioContext and limiter for Salamander piano
+    // (MusyngKite manages its own audio chain via Tone.js)
+    if (!audioContext) {
+      audioContext = new AudioContext()
+    }
 
-      // Gain stage to boost overall volume (+12dB ≈ 4x louder)
-      gain = new Tone.Gain(12, 'decibels').connect(limiter)
+    // Create a limiter to prevent clipping when multiple notes play together
+    if (!limiter) {
+      limiter = audioContext.createDynamicsCompressor()
+      limiter.threshold.value = -6
+      limiter.knee.value = 3
+      limiter.ratio.value = 20
+      limiter.attack.value = 0.001
+      limiter.release.value = 0.1
+      limiter.connect(audioContext.destination)
+    }
 
-      sampler = new Tone.Sampler({
-        urls: {
-          A0: 'A0.mp3',
-          C1: 'C1.mp3',
-          Eb1: 'Eb1.mp3',
-          Gb1: 'Gb1.mp3',
-          A1: 'A1.mp3',
-          C2: 'C2.mp3',
-          Eb2: 'Eb2.mp3',
-          Gb2: 'Gb2.mp3',
-          A2: 'A2.mp3',
-          C3: 'C3.mp3',
-          Eb3: 'Eb3.mp3',
-          Gb3: 'Gb3.mp3',
-          A3: 'A3.mp3',
-          C4: 'C4.mp3',
-          Eb4: 'Eb4.mp3',
-          Gb4: 'Gb4.mp3',
-          A4: 'A4.mp3',
-          C5: 'C5.mp3',
-          Eb5: 'Eb5.mp3',
-          Gb5: 'Gb5.mp3',
-          A5: 'A5.mp3',
-        },
-        release: 1,
-        baseUrl: SAMPLE_BASE_URL,
-        onload: () => {
-          isLoaded.value = true
-          resolve()
-        },
-      }).connect(gain)
-    })
+    piano = createPiano({
+      audioContext,
+      destination: limiter,
+    }, currentPianoId.value)
+
+    await piano.load()
+    isLoaded.value = true
   }
 
   // Resume audio context when app returns from background (iOS suspends it)
   function handleVisibilityChange() {
-    if (document.visibilityState === 'visible' && Tone.context.state === 'suspended') {
-      Tone.context.resume()
+    if (document.visibilityState === 'visible') {
+      if (audioContext?.state === 'suspended') {
+        audioContext.resume()
+      }
+      if (Tone.context.state === 'suspended') {
+        Tone.context.resume()
+      }
     }
   }
 
@@ -92,21 +81,34 @@ export function usePiano() {
       }
     }
 
-    // Try to resume the audio context with a timeout
-    // Tone.start() hangs forever if browser blocks autoplay, so we race it
-    const startPromise = Tone.start()
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('timeout')), 500)
-    )
+    // Create AudioContext if needed
+    if (!audioContext) {
+      audioContext = new AudioContext()
+    }
 
+    // Try to resume native AudioContext with timeout
+    if (audioContext.state === 'suspended') {
+      const resumePromise = audioContext.resume()
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 500)
+      )
+
+      try {
+        await Promise.race([resumePromise, timeoutPromise])
+      } catch (e) {
+        // Timeout or error
+      }
+    }
+
+    // Also start Tone.js context (needed for MusyngKite)
     try {
-      await Promise.race([startPromise, timeoutPromise])
+      await Tone.start()
     } catch (e) {
-      // Timeout or error - check state to determine if blocked
+      // Tone.start may fail if already running or blocked
     }
 
     // If still suspended, browser blocked autoplay
-    if (Tone.context.state !== 'running') {
+    if (audioContext.state !== 'running') {
       return false
     }
 
@@ -120,22 +122,39 @@ export function usePiano() {
     return true
   }
 
+  async function switchPiano(pianoId) {
+    if (currentPianoId.value === pianoId) return
+
+    const wasLoaded = isLoaded.value
+
+    // Dispose current piano
+    if (piano) {
+      piano.dispose()
+      piano = null
+    }
+    isLoaded.value = false
+
+    // Update selection
+    currentPianoId.value = pianoId
+    setSelectedPianoId(pianoId)
+
+    // Reload if was previously loaded
+    if (wasLoaded) {
+      await initPiano()
+    }
+  }
+
   function getRandomKey() {
     return ALL_KEYS[Math.floor(Math.random() * ALL_KEYS.length)]
   }
 
   function stopPlayback() {
-    // Cancel all scheduled Transport events (future notes)
-    Tone.Transport.cancel()
-    Tone.Transport.stop()
-    Tone.Transport.position = 0
-
     if (playbackTimeoutId) {
       clearTimeout(playbackTimeoutId)
       playbackTimeoutId = null
     }
-    if (sampler) {
-      sampler.releaseAll()
+    if (piano) {
+      piano.stop()
     }
     isPlaying.value = false
   }
@@ -214,40 +233,31 @@ export function usePiano() {
     const chordDuration = 0.5
     const chordGap = 0.6
 
-    // Cancel any previously scheduled events and reset transport
-    Tone.Transport.cancel()
-    Tone.Transport.stop()
-    Tone.Transport.position = 0
+    // Stop any currently playing notes
+    piano.stop()
 
-    let offset = 0
+    let delay = 0
 
-    // Schedule cadence chords on Transport
+    // Schedule cadence chords
     for (const chord of cadence) {
-      const chordOffset = offset
-      Tone.Transport.schedule((time) => {
-        chord.forEach(note => {
-          sampler.triggerAttackRelease(note, chordDuration, time, 0.25)
-        })
-      }, chordOffset)
-      offset += chordGap
+      const chordDelay = delay
+      setTimeout(() => {
+        piano.playChord(chord, chordDuration)
+      }, chordDelay * 1000)
+      delay += chordGap
     }
 
-    offset += 0.3
+    delay += 0.3
 
     // Schedule mystery note
     const mysteryNote = scaleNotes[noteIndex]
-    Tone.Transport.schedule((time) => {
-      sampler.triggerAttackRelease(mysteryNote, 1, time, 0.45)
-    }, offset)
+    setTimeout(() => {
+      piano.playNote(mysteryNote, 1)
+    }, delay * 1000)
 
-    // Start the transport
-    Tone.Transport.start()
-
-    // Account for release time (1s) in addition to note duration
-    const totalDuration = offset + 1 + 1
+    // Account for note duration + some release time
+    const totalDuration = delay + 1 + 1
     playbackTimeoutId = setTimeout(() => {
-      Tone.Transport.stop()
-      Tone.Transport.position = 0
       isPlaying.value = false
       playbackTimeoutId = null
     }, totalDuration * 1000)
@@ -265,29 +275,21 @@ export function usePiano() {
       const chordDuration = 0.5
       const chordGap = 0.6
 
-      // Cancel any previously scheduled events and reset transport
-      Tone.Transport.cancel()
-      Tone.Transport.stop()
-      Tone.Transport.position = 0
+      // Stop any currently playing notes
+      piano.stop()
 
-      let offset = 0
+      let delay = 0
 
       for (const chord of cadence) {
-        const chordOffset = offset
-        Tone.Transport.schedule((time) => {
-          chord.forEach(note => {
-            sampler.triggerAttackRelease(note, chordDuration, time, 0.25)
-          })
-        }, chordOffset)
-        offset += chordGap
+        const chordDelay = delay
+        setTimeout(() => {
+          piano.playChord(chord, chordDuration)
+        }, chordDelay * 1000)
+        delay += chordGap
       }
-
-      Tone.Transport.start()
 
       const totalDuration = cadence.length * chordGap
       setTimeout(() => {
-        Tone.Transport.stop()
-        Tone.Transport.position = 0
         resolve()
       }, totalDuration * 1000)
     })
@@ -298,24 +300,16 @@ export function usePiano() {
 
     isPlaying.value = true
 
-    // Cancel any previously scheduled events and reset transport
-    Tone.Transport.cancel()
-    Tone.Transport.stop()
-    Tone.Transport.position = 0
+    // Stop any currently playing notes
+    piano.stop()
 
     const scaleNotes = getScaleNotes(key, mode, octave)
     const note = scaleNotes[noteIndex]
 
-    Tone.Transport.schedule((time) => {
-      sampler.triggerAttackRelease(note, 1, time, 0.45)
-    }, 0)
-
-    Tone.Transport.start()
+    piano.playNote(note, 1)
 
     // Account for note duration + release time
     playbackTimeoutId = setTimeout(() => {
-      Tone.Transport.stop()
-      Tone.Transport.position = 0
       isPlaying.value = false
       playbackTimeoutId = null
     }, 2000) // 1s duration + 1s release
@@ -326,7 +320,7 @@ export function usePiano() {
 
     const scaleNotes = getScaleNotes(key, mode, octave)
     const note = scaleNotes[noteIndex]
-    sampler.triggerAttackRelease(note, duration, Tone.now(), 0.45)
+    piano.playNote(note, duration)
   }
 
   function getRandomNoteIndex() {
@@ -353,6 +347,7 @@ export function usePiano() {
   }
 
   return {
+    // Existing API (unchanged)
     isLoaded,
     isPlaying,
     currentKey,
@@ -368,5 +363,10 @@ export function usePiano() {
     getRandomOctave,
     getSolfege,
     formatKeyDisplay,
+
+    // New piano selection API
+    currentPianoId,
+    switchPiano,
+    getPianoTypeList,
   }
 }

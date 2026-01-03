@@ -13,8 +13,11 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { usePiano } from '@/composables/usePiano'
 
 const router = useRouter()
+const { currentPianoId, switchPiano, getPianoTypeList } = usePiano()
+const pianoTypes = getPianoTypeList()
 
 const STORAGE_KEY = 'ear-trainer-settings'
 
@@ -132,6 +135,19 @@ function handleStart() {
       </DialogHeader>
 
       <div class="flex flex-col gap-6 mb-6">
+        <div class="flex flex-col gap-3">
+          <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Piano Sound</Label>
+          <select
+            :value="currentPianoId"
+            @change="(e) => switchPiano(e.target.value)"
+            class="piano-select"
+          >
+            <option v-for="piano in pianoTypes" :key="piano.id" :value="piano.id">
+              {{ piano.displayName }}
+            </option>
+          </select>
+        </div>
+
         <div class="flex flex-col gap-3">
           <Label class="text-sm font-normal text-muted-foreground tracking-caps uppercase">Key Mode</Label>
           <RadioGroup v-model="keyMode" class="flex gap-6">
@@ -496,5 +512,30 @@ function handleStart() {
     width: 100%;
     padding: 14px 24px;
   }
+}
+
+.piano-select {
+  padding: 10px 36px 10px 14px;
+  border: 1px solid #e0dcd8;
+  border-radius: 8px;
+  background: white;
+  font-size: 0.95rem;
+  font-weight: 300;
+  color: #3d3d3d;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition: border-color 0.2s ease;
+}
+
+.piano-select:hover {
+  border-color: #B8956D;
+}
+
+.piano-select:focus {
+  outline: none;
+  border-color: #B8956D;
 }
 </style>

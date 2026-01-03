@@ -14,6 +14,7 @@
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.562.0",
     "reka-ui": "^2.7.0",
+    "smplr": "^0.16.3",
     "tailwind-merge": "^3.4.0",
     "tonal": "^6.4.2",
     "tone": "^15.1.22",
