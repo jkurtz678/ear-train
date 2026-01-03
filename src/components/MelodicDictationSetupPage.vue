@@ -693,15 +693,12 @@ function handleStart() {
 
   .title-section {
     margin-right: 0;
-    text-align: left;
+    text-align: center;
+    width: 100%;
   }
 
   .title {
     font-size: 1.5rem;
-  }
-
-  .subtitle {
-    text-align: left;
   }
 
   .config-row {

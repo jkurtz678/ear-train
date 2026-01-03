@@ -976,6 +976,10 @@ function getNoteSolfege(index) {
   width: 100%;
   overflow-x: hidden;
   padding: 16px 0;
+  min-height: 120px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .note-display {
@@ -993,6 +997,18 @@ function getNoteSolfege(index) {
   min-width: 36px;
   transition: transform 0.2s;
   position: relative;
+  animation: notesFadeIn 0.4s ease-out;
+}
+
+@keyframes notesFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .arrow {
