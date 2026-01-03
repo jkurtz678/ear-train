@@ -178,7 +178,9 @@ function goToStats() {
   .card {
     border-radius: 0;
     padding: 48px 20px;
+    padding-top: calc(48px + env(safe-area-inset-top, 0px));
     min-height: 100vh;
+    min-height: 100dvh;
     box-shadow: none;
   }
 

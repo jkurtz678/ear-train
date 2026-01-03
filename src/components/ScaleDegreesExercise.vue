@@ -759,8 +759,10 @@ function handleSettingsDone() {
 
   .card {
     border-radius: 0;
-    padding: 24px 16px 48px 16px;
+    padding: 24px 16px 100px 16px;
+    padding-top: calc(24px + env(safe-area-inset-top, 0px));
     min-height: 100vh;
+    min-height: 100dvh;
     box-shadow: none;
   }
 
