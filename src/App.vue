@@ -20,6 +20,12 @@ body {
   background: #e8e4e0;
 }
 
+@media (max-width: 500px) {
+  body {
+    background: #f5f3f0;
+  }
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;

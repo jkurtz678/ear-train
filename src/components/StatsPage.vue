@@ -533,6 +533,7 @@ function getCorrectWidth(note) {
   .page {
     padding: 0;
     align-items: flex-start;
+    background: #f5f3f0;
   }
 
   .card {
