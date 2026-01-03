@@ -48,6 +48,7 @@ const cadenceType = ref('major')
 const octaves = ref(['middle'])
 const currentKey = ref(null)
 const currentOctave = ref(null)
+const enabledNotes = ref({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true })
 
 // Game state
 const currentQuestionNumber = ref(1)
@@ -195,6 +196,7 @@ onMounted(async () => {
           octaves.value = selectedOctaves
         }
       }
+      if (settings.enabledNotes) enabledNotes.value = settings.enabledNotes
     } catch (e) {
       console.warn('Failed to load settings from localStorage')
     }
@@ -232,12 +234,31 @@ function handleSettingsSave() {
   showSettings.value = false
 }
 
+// Note selection helpers
+function getNoteKey(index) {
+  return index === 7 ? 0 : index
+}
+
+function isNoteEnabled(index) {
+  return enabledNotes.value[getNoteKey(index)]
+}
+
+function getRandomEnabledNoteIndex() {
+  const enabledIndices = []
+  for (let i = 0; i <= 7; i++) {
+    if (isNoteEnabled(i)) {
+      enabledIndices.push(i)
+    }
+  }
+  return enabledIndices[Math.floor(Math.random() * enabledIndices.length)]
+}
+
 function generateSequence(length) {
   const seq = []
   const actualLength = isInfinite.value ? 100 : length
   for (let i = 0; i < actualLength; i++) {
     seq.push({
-      noteIndex: getRandomNoteIndex(),
+      noteIndex: getRandomEnabledNoteIndex(),
       octave: getRandomOctave(octaves.value)
     })
   }
@@ -247,7 +268,7 @@ function generateSequence(length) {
 function extendSequence() {
   for (let i = 0; i < 50; i++) {
     sequence.value.push({
-      noteIndex: getRandomNoteIndex(),
+      noteIndex: getRandomEnabledNoteIndex(),
       octave: getRandomOctave(octaves.value)
     })
   }
@@ -284,6 +305,16 @@ async function startNewSequence() {
   await startAudioContext()
   hasStarted.value = true
   isPlaying.value = true
+
+  // Scroll to start after DOM updates
+  nextTick(() => {
+    if (noteDisplayRef.value) {
+      const firstNote = noteDisplayRef.value.querySelector('.note-wrapper')
+      if (firstNote) {
+        firstNote.scrollIntoView({ behavior: 'instant', inline: 'start', block: 'nearest' })
+      }
+    }
+  })
 
   // Play cadence first
   await playCadenceOnly(currentKey.value, cadenceType.value)
@@ -550,10 +581,17 @@ function handleGuess(guessIndex) {
 }
 
 function getButtonClass(index) {
+  const classes = []
+
   if (feedbackButtonIndex.value === index) {
-    return feedbackButtonType.value === 'correct' ? 'correct' : 'wrong'
+    classes.push(feedbackButtonType.value === 'correct' ? 'correct' : 'wrong')
   }
-  return ''
+
+  if (!isNoteEnabled(index)) {
+    classes.push('note-disabled')
+  }
+
+  return classes.join(' ')
 }
 
 function getNoteStatus(index) {
@@ -687,7 +725,7 @@ function getNoteSolfege(index) {
         </div>
 
         <!-- Note display -->
-        <div class="note-display-container">
+        <div class="note-display-container" @wheel.prevent>
           <div class="note-display" ref="noteDisplayRef">
             <div
               v-for="(noteIndex, index) in visibleNotes"
@@ -992,12 +1030,20 @@ function getNoteSolfege(index) {
 
 .note-display-container {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding: 16px 0;
   min-height: 120px;
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  touch-action: pan-y; /* Prevent horizontal touch scroll */
+  overscroll-behavior-x: none;
+}
+
+.note-display-container::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .note-display {
@@ -1222,6 +1268,12 @@ function getNoteSolfege(index) {
 .solfege-btn.wrong:hover {
   background: rgba(204, 90, 90, 0.15);
   color: #CC5A5A;
+}
+
+/* Disabled notes (not selected in settings) */
+.solfege-btn.note-disabled {
+  opacity: 0.4;
+  color: #aaa;
 }
 
 .controls {

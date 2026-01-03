@@ -40,6 +40,27 @@ const octaves = ref({
 })
 const showSettingsModal = ref(false)
 
+// Note selection state
+const enabledNotes = ref({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true })
+
+// Solfege labels for current mode (7 unique notes)
+const solfege = computed(() => cadenceType.value === 'major'
+  ? ['Do', 'Re', 'Mi', 'Fa', 'Sol', 'La', 'Ti']
+  : ['La', 'Ti', 'Do', 'Re', 'Mi', 'Fa', 'Sol'])
+
+// Note selection helpers
+function getEnabledCount() {
+  return Object.values(enabledNotes.value).filter(Boolean).length
+}
+
+function toggleNote(index) {
+  // Can always enable, but only disable if more than 2 enabled
+  if (enabledNotes.value[index] && getEnabledCount() <= 2) {
+    return
+  }
+  enabledNotes.value[index] = !enabledNotes.value[index]
+}
+
 // Convert slider value (0-200) to speed (0.2-3)
 function sliderToSpeed(sliderValue) {
   if (sliderValue <= 100) {
@@ -168,6 +189,7 @@ onMounted(() => {
       if (settings.keyMode) keyMode.value = settings.keyMode
       if (settings.cadenceType) cadenceType.value = settings.cadenceType
       if (settings.octaves) octaves.value = settings.octaves
+      if (settings.enabledNotes) enabledNotes.value = settings.enabledNotes
     } catch (e) {
       console.warn('Failed to load settings from localStorage')
     }
@@ -208,6 +230,7 @@ function handleStart() {
     keyMode: keyMode.value,
     cadenceType: cadenceType.value,
     octaves: octaves.value,
+    enabledNotes: enabledNotes.value,
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
 
@@ -393,6 +416,28 @@ function handleStart() {
               <span style="width: 23px;">0.2x</span>
               <span style="width: 23px; text-align: center">1x</span>
               <span style="width: 23px; text-align: right">3x</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Note Selection Card -->
+        <div class="config-card">
+          <div class="config-content">
+            <span class="config-label">Notes to Practice</span>
+            <div class="note-squares">
+              <button
+                v-for="(note, index) in solfege"
+                :key="index"
+                class="note-square"
+                :class="{
+                  enabled: enabledNotes[index],
+                  disabled: !enabledNotes[index],
+                  'cannot-disable': enabledNotes[index] && getEnabledCount() <= 2
+                }"
+                @click="toggleNote(index)"
+              >
+                {{ note.slice(0, 2) }}
+              </button>
             </div>
           </div>
         </div>
@@ -766,5 +811,59 @@ function handleStart() {
 .piano-select:focus {
   outline: none;
   border-color: #B8956D;
+}
+
+/* Note Selection */
+.note-squares {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.note-square {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.note-square.enabled {
+  background: #B8956D;
+  color: white;
+}
+
+.note-square.disabled {
+  background: #e0dcd8;
+  color: #888;
+}
+
+.note-square.cannot-disable {
+  cursor: not-allowed;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .note-square:hover:not(.cannot-disable) {
+    transform: scale(1.08);
+  }
+}
+
+@media (max-width: 500px) {
+  .note-squares {
+    gap: 4px;
+  }
+
+  .note-square {
+    width: 32px;
+    height: 32px;
+    font-size: 0.7rem;
+  }
 }
 </style>

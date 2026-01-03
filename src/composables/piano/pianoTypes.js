@@ -1,13 +1,13 @@
-import { SalamanderPiano } from './SalamanderPiano'
 import { MusyngKitePiano } from './MusyngKitePiano'
+import { SalamanderPiano } from './SalamanderPiano'
 
 const STORAGE_KEY = 'ear-tuner-selected-piano'
-const DEFAULT_PIANO_ID = 'salamander'
+const DEFAULT_PIANO_ID = 'musyng'
 
 // Registry of all available piano types
 export const PIANO_TYPES = {
-  [SalamanderPiano.id]: SalamanderPiano,
   [MusyngKitePiano.id]: MusyngKitePiano,
+  [SalamanderPiano.id]: SalamanderPiano,
 }
 
 // Get list of piano types for UI dropdown
@@ -47,7 +47,7 @@ export function createPiano(config, pianoId = null) {
 
   if (!PianoClass) {
     console.warn(`Unknown piano type: ${selectedId}, falling back to ${DEFAULT_PIANO_ID}`)
-    return new SalamanderPiano(config)
+    return new MusyngKitePiano(config)
   }
 
   return new PianoClass(config)

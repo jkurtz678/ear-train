@@ -47,6 +47,7 @@ const cadenceType = ref('major')
 const octaves = ref(['middle'])
 const walkToRoot = ref(true)
 const currentKey = ref(null)
+const enabledNotes = ref({ 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true })
 
 // Game state
 const currentQuestionNumber = ref(1)
@@ -121,6 +122,7 @@ onMounted(async () => {
         }
       }
       if (settings.walkToRoot !== undefined) walkToRoot.value = settings.walkToRoot
+      if (settings.enabledNotes) enabledNotes.value = settings.enabledNotes
     } catch (e) {
       console.warn('Failed to load settings')
     }
@@ -141,6 +143,25 @@ onMounted(async () => {
   startNewRound()
 })
 
+// Note selection helpers
+function getNoteKey(index) {
+  return index === 7 ? 0 : index
+}
+
+function isNoteEnabled(index) {
+  return enabledNotes.value[getNoteKey(index)]
+}
+
+function getRandomEnabledNoteIndex() {
+  const enabledIndices = []
+  for (let i = 0; i <= 7; i++) {
+    if (isNoteEnabled(i)) {
+      enabledIndices.push(i)
+    }
+  }
+  return enabledIndices[Math.floor(Math.random() * enabledIndices.length)]
+}
+
 function startNewRound() {
   feedbackIndex.value = null
   feedbackType.value = null
@@ -155,7 +176,7 @@ function startNewRound() {
     currentKey.value = getRandomKey()
   }
 
-  currentNoteIndex.value = getRandomNoteIndex()
+  currentNoteIndex.value = getRandomEnabledNoteIndex()
   currentOctave.value = getRandomOctave(octaves.value)
   playCadenceAndNote(currentNoteIndex.value, currentKey.value, cadenceType.value, currentOctave.value)
 }
@@ -267,13 +288,19 @@ function handleGuess(index) {
 }
 
 function getButtonClass(index) {
+  const classes = []
+
   if (walkHighlightIndex.value === index) {
-    return 'walk-highlight'
+    classes.push('walk-highlight')
+  } else if (feedbackIndex.value === index) {
+    classes.push(feedbackType.value === 'correct' ? 'correct' : 'wrong')
   }
-  if (feedbackIndex.value === index) {
-    return feedbackType.value === 'correct' ? 'correct' : 'wrong'
+
+  if (!isNoteEnabled(index)) {
+    classes.push('note-disabled')
   }
-  return ''
+
+  return classes.join(' ')
 }
 
 function saveWalkToRootSetting() {
@@ -836,6 +863,20 @@ function handleSettingsDone() {
 
 .solfege-btn.walk-highlight,
 .solfege-btn.walk-highlight:hover {
+  background: rgba(74, 157, 104, 0.15);
+  color: #4A9D68;
+}
+
+/* Disabled notes (not selected in settings) */
+.solfege-btn.note-disabled {
+  opacity: 0.4;
+  color: #aaa;
+}
+
+/* Walk highlight overrides disabled styling */
+.solfege-btn.note-disabled.walk-highlight,
+.solfege-btn.note-disabled.walk-highlight:hover {
+  opacity: 1;
   background: rgba(74, 157, 104, 0.15);
   color: #4A9D68;
 }
