@@ -235,7 +235,7 @@ function handleStart() {
             <span class="config-label">Other settings</span>
             <div class="config-summary">
               <template v-for="(part, index) in settingsSummaryParts" :key="index">
-                <span>{{ part }}</span>
+                <span class="summary-item">{{ part }}</span>
                 <span v-if="index < settingsSummaryParts.length - 1" class="summary-separator">·</span>
               </template>
             </div>
@@ -368,8 +368,13 @@ function handleStart() {
   color: #444;
   font-weight: 300;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 4px 8px;
+}
+
+.summary-item {
+  white-space: nowrap;
 }
 
 .summary-separator {
