@@ -190,7 +190,7 @@ function getCorrectWidth(note) {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -213,6 +213,7 @@ function getCorrectWidth(note) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 16px;
 }
 
 .header-spacer {
@@ -326,7 +327,7 @@ function getCorrectWidth(note) {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   padding: 16px;
   background: white;
   border-radius: 8px;
@@ -526,6 +527,9 @@ function getCorrectWidth(note) {
   .legend-mobile {
     display: flex;
   }
+  .summary {
+    gap: 20px;
+  }
 }
 
 /* Mobile responsive styles */
@@ -540,7 +544,7 @@ function getCorrectWidth(note) {
     border-radius: 0;
     padding: 24px 16px;
     padding-top: calc(24px + env(safe-area-inset-top, 0px));
-    min-height: 100vh;
+    min-height: 100dvh;
     min-height: 100dvh;
     box-shadow: none;
   }
